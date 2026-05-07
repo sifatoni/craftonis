@@ -1,0 +1,445 @@
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["fullTextSearch"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── TENANTS ────────────────────────────────────────────────
+model Tenant {
+  id            String   @id @default(uuid())
+  name          String
+  domain        String?  @unique
+  plan          Plan     @default(STARTER)
+  tokenBalance  Int      @default(0)
+  logoUrl       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users         User[]
+  departments   Department[]
+  jobs          Job[]
+  candidates    Candidate[]
+  meetings      Meeting[]
+  leads         Lead[]
+  tokenLedger   TokenLedger[]
+  subscriptions Subscription[]
+
+  @@map("tenants")
+}
+
+enum Plan {
+  STARTER
+  GROWTH
+  SCALE
+  ENTERPRISE
+}
+
+// ── USERS ──────────────────────────────────────────────────
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+  email        String
+  role         Role     @default(VIEWER)
+  passwordHash String
+  status       UserStatus @default(ACTIVE)
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+enum Role {
+  SUPER_ADMIN
+  HR_MANAGER
+  INTERVIEWER
+  DEPT_HEAD
+  VIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  INVITED
+}
+
+// ── DEPARTMENTS ────────────────────────────────────────────
+model Department {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  jobs      Job[]
+  employees Employee[]
+
+  @@unique([tenantId, name])
+  @@map("departments")
+}
+
+// ── JOBS ───────────────────────────────────────────────────
+model Job {
+  id           String    @id @default(uuid())
+  tenantId     String
+  departmentId String?
+  title        String
+  description  String?
+  requirements String?
+  salaryMin    Int?
+  salaryMax    Int?
+  status       JobStatus @default(OPEN)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  department   Department? @relation(fields: [departmentId], references: [id])
+  candidates   Candidate[]
+
+  @@map("jobs")
+}
+
+enum JobStatus {
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+// ── CANDIDATES ─────────────────────────────────────────────
+model Candidate {
+  id          String          @id @default(uuid())
+  tenantId    String
+  jobId       String?
+  name        String
+  email       String
+  phone       String?
+  cvUrl       String?
+  stage       CandidateStage  @default(APPLIED)
+  totalScore  Float?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id])
+  job         Job?            @relation(fields: [jobId], references: [id])
+  cvScore     CvScore?
+  interviews  Interview[]
+  onboarding  OnboardingPlan?
+
+  @@map("candidates")
+}
+
+enum CandidateStage {
+  APPLIED
+  CV_REVIEWED
+  PHONE_SCREEN
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+}
+
+// ── CV SCORES ──────────────────────────────────────────────
+model CvScore {
+  id           String    @id @default(uuid())
+  candidateId  String    @unique
+  skillMatch   Float     @default(0)
+  stability    Float     @default(0)
+  education    Float     @default(0)
+  totalScore   Float     @default(0)
+  parsedData   Json?
+  createdAt    DateTime  @default(now())
+
+  candidate    Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("cv_scores")
+}
+
+// ── INTERVIEWS ─────────────────────────────────────────────
+model Interview {
+  id            String          @id @default(uuid())
+  candidateId   String
+  interviewerId String
+  type          InterviewType   @default(BEHAVIORAL)
+  scheduledAt   DateTime?
+  status        InterviewStatus @default(SCHEDULED)
+  ratings       Json?
+  notes         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  candidate     Candidate       @relation(fields: [candidateId], references: [id])
+
+  @@map("interviews")
+}
+
+enum InterviewType {
+  TECHNICAL
+  BEHAVIORAL
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// ── MEETINGS ───────────────────────────────────────────────
+model Meeting {
+  id          String        @id @default(uuid())
+  tenantId    String
+  hostId      String
+  roomCode    String        @unique @default(uuid())
+  title       String?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  recordingUrl String?
+  status      MeetingStatus @default(SCHEDULED)
+  createdAt   DateTime      @default(now())
+
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  transcripts Transcript[]
+  minutes     MeetingMinutes?
+
+  @@map("meetings")
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+}
+
+// ── TRANSCRIPTS ────────────────────────────────────────────
+model Transcript {
+  id          String   @id @default(uuid())
+  meetingId   String
+  speaker     String?
+  text        String
+  timestampMs Int      @default(0)
+  flagged     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  meeting     Meeting  @relation(fields: [meetingId], references: [id])
+
+  @@map("transcripts")
+}
+
+// ── MEETING MINUTES ────────────────────────────────────────
+model MeetingMinutes {
+  id          String   @id @default(uuid())
+  meetingId   String   @unique
+  summary     String?
+  decisions   Json?
+  actionItems Json?
+  approved    Boolean  @default(false)
+  approvedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  meeting     Meeting  @relation(fields: [meetingId], references: [id])
+
+  @@map("meeting_minutes")
+}
+
+// ── LEADS ──────────────────────────────────────────────────
+model Lead {
+  id          String     @id @default(uuid())
+  tenantId    String
+  name        String?
+  designation String?
+  company     String?
+  email       String?
+  phone       String?
+  linkedinUrl String?
+  score       Int        @default(0)
+  stage       LeadStage  @default(NEW)
+  revealed    Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  tenant      Tenant     @relation(fields: [tenantId], references: [id])
+
+  @@map("leads")
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  RESPONDED
+  QUALIFIED
+}
+
+// ── TOKEN LEDGER ───────────────────────────────────────────
+model TokenLedger {
+  id        String          @id @default(uuid())
+  tenantId  String
+  amount    Int
+  type      TokenLedgerType
+  ref       String?
+  createdAt DateTime        @default(now())
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+
+  @@map("token_ledger")
+}
+
+enum TokenLedgerType {
+  CREDIT
+  DEBIT
+}
+
+// ── ONBOARDING ─────────────────────────────────────────────
+model OnboardingPlan {
+  id          String   @id @default(uuid())
+  candidateId String   @unique
+  planJson    Json?
+  currentWeek Int      @default(0)
+  status      OnboardingStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id])
+
+  @@map("onboarding_plans")
+}
+
+enum OnboardingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+// ── EMPLOYEES (HRM) ────────────────────────────────────────
+model Employee {
+  id           String    @id @default(uuid())
+  tenantId     String
+  userId       String    @unique
+  departmentId String?
+  salary       Float?
+  joinedAt     DateTime?
+  status       EmployeeStatus @default(ACTIVE)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  department   Department? @relation(fields: [departmentId], references: [id])
+  attendance   Attendance[]
+  leaveRequests LeaveRequest[]
+  payrolls     Payroll[]
+
+  @@map("employees")
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+// ── ATTENDANCE ─────────────────────────────────────────────
+model Attendance {
+  id         String    @id @default(uuid())
+  employeeId String
+  date       DateTime  @db.Date
+  checkIn    DateTime?
+  checkOut   DateTime?
+  status     AttendanceStatus @default(PRESENT)
+  createdAt  DateTime  @default(now())
+
+  employee   Employee  @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, date])
+  @@map("attendance")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  ABSENT
+  ON_LEAVE
+}
+
+// ── LEAVE REQUESTS ─────────────────────────────────────────
+model LeaveRequest {
+  id         String      @id @default(uuid())
+  employeeId String
+  type       LeaveType
+  fromDate   DateTime    @db.Date
+  toDate     DateTime    @db.Date
+  status     LeaveStatus @default(PENDING)
+  reason     String?
+  approvedBy String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  employee   Employee    @relation(fields: [employeeId], references: [id])
+
+  @@map("leave_requests")
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  MATERNITY
+  PATERNITY
+  UNPAID
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ── PAYROLL ────────────────────────────────────────────────
+model Payroll {
+  id          String   @id @default(uuid())
+  employeeId  String
+  month       DateTime @db.Date
+  basic       Float    @default(0)
+  allowances  Float    @default(0)
+  deductions  Float    @default(0)
+  netPay      Float    @default(0)
+  paidAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  employee    Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, month])
+  @@map("payroll")
+}
+
+// ── SUBSCRIPTIONS ──────────────────────────────────────────
+model Subscription {
+  id            String             @id @default(uuid())
+  tenantId      String             @unique
+  plan          Plan               @default(STARTER)
+  status        SubscriptionStatus @default(ACTIVE)
+  billingCycle  BillingCycle       @default(MONTHLY)
+  nextBillingAt DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  tenant        Tenant             @relation(fields: [tenantId], references: [id])
+
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  EXPIRED
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
