@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { toast } from 'sonner'
 import {
-  Plus, Search, Briefcase, Users, Clock,
+  Upload, Plus, Search, Briefcase, Users, Clock,
   ChevronRight, X, Loader2, User,
   ArrowRight, CheckCircle2, Circle,
 } from 'lucide-react'
@@ -124,8 +125,52 @@ function CandidateCard({
 }) {
   const stage = STAGES.find((s) => s.key === candidate.stage)
   const score = candidate.cvScore?.totalScore
-
   const nextStage = STAGES[STAGES.findIndex((s) => s.key === candidate.stage) + 1]
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      toast.error('Only PDF files are supported')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be under 5MB')
+      return
+    }
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const token = localStorage.getItem('craftonis_access_token')
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/${candidate.id}/parse`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData,
+        }
+      )
+
+      if (!response.ok) {
+        const err = await response.json()
+        throw new Error(err.message || 'Upload failed')
+      }
+
+      toast.success('CV uploaded and parsed successfully!')
+      // Refresh candidates
+      window.location.reload()
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload CV')
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
 
   return (
     <motion.div
@@ -152,7 +197,7 @@ function CandidateCard({
           </div>
         </div>
 
-        {score !== undefined && score !== null && (
+        {score !== undefined && score !== null && score > 0 ? (
           <div
             className="text-xs font-bold px-2 py-1 rounded-lg"
             style={{
@@ -162,28 +207,90 @@ function CandidateCard({
           >
             {Math.round(score)}%
           </div>
+        ) : (
+          <div
+            className="text-xs px-2 py-1 rounded-lg"
+            style={{ background: '#1A1A1A', color: '#606060' }}
+          >
+            No score
+          </div>
         )}
       </div>
 
-      <div className="flex items-center justify-between mt-3">
+      {/* CV Upload / Score section */}
+      <div
+        className="mt-3 pt-3 flex items-center gap-2"
+        style={{ borderTop: '1px solid #1A1A1A' }}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf"
+          className="hidden"
+          onChange={handleCvUpload}
+        />
+
+        {!candidate.cvScore ? (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0"
+            style={{
+              background: '#1A1A1A',
+              color: uploading ? '#606060' : '#A0A0A0',
+              border: '1px dashed #2E2E2E',
+            }}
+          >
+            {uploading ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Upload size={12} />
+            )}
+            {uploading ? 'Uploading...' : 'Upload CV (PDF)'}
+          </button>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0"
+            style={{
+              background: '#052E16',
+              color: '#16A34A',
+              border: '1px solid #16A34A20',
+            }}
+          >
+            {uploading ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <CheckCircle2 size={12} />
+            )}
+            {uploading ? 'Uploading...' : 'CV Uploaded — Replace'}
+          </button>
+        )}
+
+        <div className="flex-1" />
+
+        {nextStage && nextStage.key !== 'REJECTED' && (
+          <button
+            onClick={() => onStageChange(candidate.id, nextStage.key)}
+            className="flex items-center gap-1 text-xs transition-colors hover:opacity-80 flex-shrink-0"
+            style={{ color: nextStage.color }}
+          >
+            {nextStage.label}
+            <ArrowRight size={12} />
+          </button>
+        )}
+      </div>
+
+      {/* Stage badge */}
+      <div className="mt-2">
         <div
-          className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
+          className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
           style={{ background: `${stage?.color}15`, color: stage?.color }}
         >
           <Circle size={6} fill={stage?.color} />
           {stage?.label}
         </div>
-
-        {nextStage && nextStage.key !== 'REJECTED' && (
-          <button
-            onClick={() => onStageChange(candidate.id, nextStage.key)}
-            className="flex items-center gap-1 text-xs transition-colors hover:opacity-80"
-            style={{ color: nextStage.color }}
-          >
-            Move to {nextStage.label}
-            <ArrowRight size={12} />
-          </button>
-        )}
       </div>
     </motion.div>
   )
