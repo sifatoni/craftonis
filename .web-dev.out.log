@@ -21,3 +21,18 @@
  GET / 200 in 146ms
  GET /favicon.ico 200 in 19ms
  ✓ Compiled in 645ms (660 modules)
+ ✓ Compiled in 178ms (329 modules)
+ ✓ Compiled in 192ms (660 modules)
+ ✓ Compiled in 191ms (329 modules)
+ ✓ Compiled in 196ms (329 modules)
+ ○ Compiling /middleware ...
+ ✓ Compiled /middleware in 1365ms (731 modules)
+ ○ Compiling /login ...
+ ✓ Compiled /login in 7.5s (1909 modules)
+ GET /login 200 in 366ms
+ GET /login 200 in 358ms
+ ○ Compiling /favicon.ico ...
+ ✓ Compiled /favicon.ico in 602ms (1033 modules)
+ GET /favicon.ico 200 in 714ms
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 714ms (1928 modules)
