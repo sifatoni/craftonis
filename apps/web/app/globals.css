@@ -1,56 +1,79 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --font-display: 'Syne', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
+@layer base {
+  :root {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 100% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 63%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 100% 32%;
+    --radius: 0.5rem;
 
-  /* Brand */
-  --crimson: #A50000;
-  --crimson-hover: #C0392B;
+    /* Craftonis brand */
+    --crimson: #A50000;
+    --crimson-hover: #C0392B;
+    --bg-base: #0A0A0A;
+    --bg-surface: #111111;
+    --bg-elevated: #1A1A1A;
+    --text-primary: #FFFFFF;
+    --text-secondary: #A0A0A0;
+    --text-muted: #606060;
+  }
 
-  /* Dark mode (default) */
-  --bg-base: #0A0A0A;
-  --bg-surface: #111111;
-  --bg-elevated: #1A1A1A;
-  --border: #2E2E2E;
-  --text-primary: #FFFFFF;
-  --text-secondary: #A0A0A0;
-  --text-muted: #606060;
-  --accent: #A50000;
-  --accent-hover: #C0392B;
-  --success: #16A34A;
-  --warning: #D97706;
-  --error: #DC2626;
+  [data-theme="light"] {
+    --background: 0 0% 97%;
+    --foreground: 0 0% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 4%;
+    --primary: 0 100% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 4%;
+    --muted: 0 0% 94%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 4%;
+    --border: 0 0% 91%;
+    --input: 0 0% 91%;
+    --ring: 0 100% 32%;
+
+    --bg-base: #F8F8F8;
+    --bg-surface: #FFFFFF;
+    --bg-elevated: #F0F0F0;
+    --text-primary: #0A0A0A;
+    --text-secondary: #4A4A4A;
+    --text-muted: #8A8A8A;
+  }
+
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-dm-sans), sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-syne), sans-serif;
+  }
 }
-
-[data-theme="light"] {
-  --bg-base: #F8F8F8;
-  --bg-surface: #FFFFFF;
-  --bg-elevated: #F0F0F0;
-  --border: #E8E8E8;
-  --text-primary: #0A0A0A;
-  --text-secondary: #4A4A4A;
-  --text-muted: #8A8A8A;
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-body {
-  background: var(--bg-base);
-  color: var(--text-primary);
-  font-family: var(--font-body);
-}
-
-/* Logo theme switching */
-[data-theme="dark"] .dark-mode-logo { display: block; }
-[data-theme="dark"] .light-mode-logo { display: none; }
-[data-theme="light"] .dark-mode-logo { display: none; }
-[data-theme="light"] .light-mode-logo { display: block; }
