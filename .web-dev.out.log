@@ -73,3 +73,26 @@
  ○ Compiling /favicon.ico ...
  ✓ Compiled /favicon.ico in 690ms (1641 modules)
  GET /favicon.ico 200 in 1050ms
+ ✓ Compiled in 1734ms (3184 modules)
+ ○ Compiling /_not-found ...
+ ✓ Compiled /_not-found in 991ms (3116 modules)
+ GET /leads 404 in 138ms
+ GET /leads 404 in 129ms
+ GET /dashboard 200 in 364ms
+ GET /dashboard 200 in 360ms
+ ○ Compiling /jobs ...
+ ✓ Compiled /jobs in 3.2s (3159 modules)
+ GET /jobs 200 in 3869ms
+ GET /jobs 200 in 3853ms
+ ✓ Compiled in 1138ms (1531 modules)
+ GET /jobs 200 in 94ms
+ GET /jobs 200 in 82ms
+ GET /jobs 200 in 95ms
+ GET /jobs 200 in 86ms
+ GET /login 200 in 104ms
+ GET /login 200 in 96ms
+ GET /register 200 in 58ms
+ GET /register 200 in 51ms
+ ○ Compiling /favicon.ico ...
+ ✓ Compiled /favicon.ico in 1493ms (1658 modules)
+ GET /favicon.ico 200 in 1804ms
