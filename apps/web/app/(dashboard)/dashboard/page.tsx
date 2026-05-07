@@ -41,8 +41,12 @@ function KpiCard({
         </div>
       </div>
       <div
-        className="text-3xl font-bold"
-        style={{ fontFamily: 'var(--font-syne)', color: color }}
+        className="text-3xl font-bold tabular-nums"
+        style={{ 
+          fontFamily: 'var(--font-dm-sans)',
+          color: color,
+          fontVariantNumeric: 'tabular-nums',
+        }}
       >
         {value}
       </div>
@@ -201,7 +205,8 @@ export default function DashboardPage() {
                 dataKey="label"
                 type="category"
                 tick={{ fill: '#A0A0A0', fontSize: 11 }}
-                width={90}
+                width={110}
+                tickFormatter={(value: string) => value.replace('_', ' ')}
               />
               <Tooltip
                 contentStyle={{

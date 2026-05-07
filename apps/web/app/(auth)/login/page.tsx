@@ -163,13 +163,13 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="oni@craftonis.com"
+                placeholder="example@email.com"
                 autoComplete="email"
                 {...register('email')}
                 className="h-12"
                 style={{
                   background: '#111111',
-                  border: errors.email ? '1px solid #A50000' : '1px solid #2E2E2E',
+                  border: errors.email && errors.email.message !== ' ' ? '1px solid #A50000' : '1px solid #2E2E2E',
                   color: '#FFFFFF',
                   fontSize: '0.9375rem',
                 }}

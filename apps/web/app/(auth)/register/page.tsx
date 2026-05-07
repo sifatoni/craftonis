@@ -89,21 +89,21 @@ export default function RegisterPage() {
             {
               id: 'companyName',
               label: 'COMPANY NAME',
-              placeholder: 'Craftonis Inc',
+              placeholder: 'Your company name',
               type: 'text',
               error: errors.companyName,
             },
             {
               id: 'name',
               label: 'YOUR NAME',
-              placeholder: 'Oni',
+              placeholder: 'Your full name',
               type: 'text',
               error: errors.name,
             },
             {
               id: 'email',
               label: 'WORK EMAIL',
-              placeholder: 'oni@company.com',
+              placeholder: 'example@email.com',
               type: 'email',
               error: errors.email,
             },
@@ -123,8 +123,9 @@ export default function RegisterPage() {
                 className="h-12"
                 style={{
                   background: '#111111',
-                  border: field.error ? '1px solid #A50000' : '1px solid #2E2E2E',
+                  border: field.error?.message ? '1px solid #A50000' : '1px solid #2E2E2E',
                   color: '#FFFFFF',
+                  outline: 'none',
                 }}
               />
               {field.error && (

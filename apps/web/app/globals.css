@@ -77,3 +77,13 @@
     font-family: var(--font-syne), sans-serif;
   }
 }
+
+input:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+input:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 1px #A50000 !important;
+}

@@ -36,3 +36,11 @@
  GET /favicon.ico 200 in 714ms
  ○ Compiling /dashboard ...
  ✓ Compiled /dashboard in 714ms (1928 modules)
+ ✓ Compiled in 513ms (906 modules)
+ ✓ Compiled in 289ms (906 modules)
+ ✓ Compiled in 220ms (906 modules)
+ ✓ Compiled in 10.3s (3107 modules)
+ GET /login 200 in 40ms
+ GET /login 200 in 30ms
+ GET /login 200 in 61ms
+ GET /login 200 in 54ms
