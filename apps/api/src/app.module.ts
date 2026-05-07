@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { CvModule } from './modules/cv/cv.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { CvModule } from './modules/cv/cv.module';
     WorkspaceModule,
     JobsModule,
     CvModule,
+    AnalyticsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
