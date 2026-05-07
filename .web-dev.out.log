@@ -1,0 +1,23 @@
+
+> craftonis@1.0.0 dev:web
+> npm run dev --workspace=apps/web
+
+
+> @craftonis/web@0.1.0 dev
+> next dev -p 3001
+
+  ▲ Next.js 14.2.0
+  - Local:        http://localhost:3001
+
+ ✓ Starting...
+ ✓ Ready in 2.7s
+ ○ Compiling / ...
+ ✓ Compiled / in 7s (692 modules)
+ GET / 200 in 7406ms
+ ✓ Compiled in 538ms (329 modules)
+ GET / 200 in 37ms
+ ✓ Compiled /favicon.ico in 429ms (375 modules)
+ GET /favicon.ico 200 in 642ms
+ GET / 200 in 146ms
+ GET /favicon.ico 200 in 19ms
+ ✓ Compiled in 645ms (660 modules)
