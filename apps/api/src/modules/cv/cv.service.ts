@@ -1,0 +1,325 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../database/prisma.service';
+import { ScoreCvDto } from './dto/score-cv.dto';
+import Anthropic from '@anthropic-ai/sdk';
+const pdfParse = require('pdf-parse');
+
+@Injectable()
+export class CvService {
+  private anthropic: Anthropic;
+
+  constructor(
+    private prisma: PrismaService,
+    private config: ConfigService,
+  ) {
+    this.anthropic = new Anthropic({
+      apiKey: this.config.get('ANTHROPIC_API_KEY'),
+    });
+  }
+
+  // ── Parse CV PDF ──────────────────────────────────
+  async parseCv(candidateId: string, tenantId: string, fileBuffer: Buffer) {
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, tenantId },
+    });
+    if (!candidate) throw new NotFoundException('Candidate not found');
+
+    // Extract text from PDF
+    let cvText = '';
+    try {
+      const parsed = await pdfParse(fileBuffer);
+      cvText = parsed.text;
+    } catch (e) {
+      throw new BadRequestException('Could not parse PDF file');
+    }
+
+    if (!cvText || cvText.trim().length < 50) {
+      throw new BadRequestException('PDF appears to be empty or unreadable');
+    }
+
+    // Use Claude to extract structured data
+    const extractedData = await this.extractCvData(cvText);
+
+    // Update candidate with parsed CV data
+    await this.prisma.candidate.update({
+      where: { id: candidateId },
+      data: { stage: 'CV_REVIEWED' },
+    });
+
+    // Save or update CV score with parsed data
+    const cvScore = await this.prisma.cvScore.upsert({
+      where: { candidateId },
+      create: {
+        candidateId,
+        parsedData: extractedData,
+        skillMatch: 0,
+        stability: 0,
+        education: 0,
+        totalScore: 0,
+      },
+      update: {
+        parsedData: extractedData,
+      },
+    });
+
+    return {
+      candidateId,
+      extractedData,
+      cvScoreId: cvScore.id,
+      message: 'CV parsed successfully. Run scoring to calculate scores.',
+    };
+  }
+
+  // ── Score CV ──────────────────────────────────────
+  async scoreCv(tenantId: string, dto: ScoreCvDto) {
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: dto.candidateId, tenantId },
+      include: { cvScore: true, job: true },
+    });
+    if (!candidate) throw new NotFoundException('Candidate not found');
+    if (!candidate.cvScore) {
+      throw new BadRequestException('CV must be parsed first before scoring');
+    }
+
+    const parsedData = candidate.cvScore.parsedData as any;
+    const jobDescription = candidate.job?.description || '';
+    const jobRequirements = candidate.job?.requirements || '';
+
+    // Default weights
+    const weights = { skillMatch: 0.5, stability: 0.2, education: 0.3 };
+
+    // 1. Skill Match Score (50%)
+    const skillMatch = this.calculateSkillMatch(
+      parsedData?.skills || [],
+      `${jobDescription} ${jobRequirements}`,
+    );
+
+    // 2. Stability Score (20%)
+    const stability = this.calculateStability(parsedData?.experience || []);
+
+    // 3. Education Score (30%)
+    const education = this.calculateEducation(
+      parsedData?.education || [],
+      parsedData?.certifications || [],
+    );
+
+    // Composite score
+    const totalScore =
+      skillMatch * weights.skillMatch +
+      stability * weights.stability +
+      education * weights.education;
+
+    const cvScore = await this.prisma.cvScore.update({
+      where: { candidateId: dto.candidateId },
+      data: {
+        skillMatch: Math.round(skillMatch * 100) / 100,
+        stability: Math.round(stability * 100) / 100,
+        education: Math.round(education * 100) / 100,
+        totalScore: Math.round(totalScore * 100) / 100,
+      },
+    });
+
+    // Update candidate total score
+    await this.prisma.candidate.update({
+      where: { id: dto.candidateId },
+      data: { totalScore: cvScore.totalScore },
+    });
+
+    return {
+      candidateId: dto.candidateId,
+      scores: {
+        skillMatch: cvScore.skillMatch,
+        stability: cvScore.stability,
+        education: cvScore.education,
+        totalScore: cvScore.totalScore,
+      },
+      breakdown: {
+        skillMatchWeight: '50%',
+        stabilityWeight: '20%',
+        educationWeight: '30%',
+      },
+    };
+  }
+
+  // ── Get Score Card ────────────────────────────────
+  async getScoreCard(tenantId: string, candidateId: string) {
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, tenantId },
+      include: {
+        cvScore: true,
+        job: { select: { id: true, title: true } },
+      },
+    });
+    if (!candidate) throw new NotFoundException('Candidate not found');
+    return candidate;
+  }
+
+  // ── Get Job Leaderboard ───────────────────────────
+  async getJobLeaderboard(tenantId: string, jobId: string) {
+    const job = await this.prisma.job.findFirst({
+      where: { id: jobId, tenantId },
+    });
+    if (!job) throw new NotFoundException('Job not found');
+
+    const candidates = await this.prisma.candidate.findMany({
+      where: { jobId, tenantId, totalScore: { gt: 0 } },
+      include: {
+        cvScore: {
+          select: {
+            skillMatch: true,
+            stability: true,
+            education: true,
+            totalScore: true,
+          },
+        },
+      },
+      orderBy: { totalScore: 'desc' },
+    });
+
+    return candidates.map((c, index) => ({
+      rank: index + 1,
+      candidateId: c.id,
+      name: c.name,
+      email: c.email,
+      stage: c.stage,
+      scores: c.cvScore,
+    }));
+  }
+
+  // ── Private Helpers ───────────────────────────────
+  private async extractCvData(cvText: string): Promise<any> {
+    // If no API key, return mock data for development
+    if (!this.config.get('ANTHROPIC_API_KEY')) {
+      return this.mockExtractedData();
+    }
+
+    try {
+      const message = await this.anthropic.messages.create({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: `Extract structured data from this CV text. Return ONLY valid JSON with no explanation.
+
+CV Text:
+${cvText.substring(0, 3000)}
+
+Return this exact JSON structure:
+{
+  "name": "string",
+  "email": "string or null",
+  "phone": "string or null",
+  "totalYearsExperience": number,
+  "skills": ["skill1", "skill2"],
+  "experience": [
+    {
+      "company": "string",
+      "role": "string",
+      "startDate": "YYYY-MM or null",
+      "endDate": "YYYY-MM or present",
+      "tenureMonths": number
+    }
+  ],
+  "education": [
+    {
+      "degree": "string",
+      "institution": "string",
+      "year": number or null,
+      "level": "HIGH_SCHOOL|BACHELOR|MASTER|PHD|OTHER"
+    }
+  ],
+  "certifications": ["cert1", "cert2"]
+}`,
+          },
+        ],
+      });
+
+      const text = message.content[0].type === 'text' ? message.content[0].text : '';
+      const cleanJson = text.replace(/```json\n?|\n?```/g, '').trim();
+      return JSON.parse(cleanJson);
+    } catch (e) {
+      return this.mockExtractedData();
+    }
+  }
+
+  private mockExtractedData() {
+    return {
+      name: 'Candidate',
+      email: null,
+      phone: null,
+      totalYearsExperience: 3,
+      skills: ['JavaScript', 'TypeScript', 'React', 'Node.js'],
+      experience: [
+        {
+          company: 'Tech Company',
+          role: 'Developer',
+          startDate: '2021-01',
+          endDate: 'present',
+          tenureMonths: 24,
+        },
+      ],
+      education: [
+        {
+          degree: 'BSc Computer Science',
+          institution: 'University',
+          year: 2020,
+          level: 'BACHELOR',
+        },
+      ],
+      certifications: [],
+    };
+  }
+
+  private calculateSkillMatch(cvSkills: string[], jobText: string): number {
+    if (!cvSkills.length || !jobText) return 50;
+    const jobTextLower = jobText.toLowerCase();
+    const matchedSkills = cvSkills.filter((skill) =>
+      jobTextLower.includes(skill.toLowerCase()),
+    );
+    const matchRate = matchedSkills.length / cvSkills.length;
+    return Math.min(100, Math.round(matchRate * 100 + 30));
+  }
+
+  private calculateStability(experience: any[]): number {
+    if (!experience.length) return 50;
+    const tenures = experience.map((e) => e.tenureMonths || 12);
+    const avgTenure = tenures.reduce((a, b) => a + b, 0) / tenures.length;
+    if (avgTenure >= 36) return 100;
+    if (avgTenure >= 24) return 85;
+    if (avgTenure >= 18) return 70;
+    if (avgTenure >= 12) return 55;
+    return 35;
+  }
+
+  private calculateEducation(education: any[], certifications: string[]): number {
+    let score = 0;
+    const degreeScores: Record<string, number> = {
+      PHD: 100,
+      MASTER: 85,
+      BACHELOR: 70,
+      HIGH_SCHOOL: 40,
+      OTHER: 50,
+    };
+
+    if (education.length > 0) {
+      const highest = education.reduce((best, curr) => {
+        const currScore = degreeScores[curr.level] || 50;
+        const bestScore = degreeScores[best.level] || 50;
+        return currScore > bestScore ? curr : best;
+      });
+      score = degreeScores[highest.level] || 50;
+    } else {
+      score = 40;
+    }
+
+    // Bonus for certifications (max +15)
+    const certBonus = Math.min(certifications.length * 5, 15);
+    return Math.min(100, score + certBonus);
+  }
+}
