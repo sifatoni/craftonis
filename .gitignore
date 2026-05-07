@@ -6,3 +6,7 @@ dist/
 .DS_Store
 coverage/
 .turbo/
+
+.env.local
+.env.*.local
+docker-compose.dev.yml
