@@ -6,6 +6,7 @@ import { DatabaseModule } from './database/database.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
+import { JobsModule } from './modules/jobs/jobs.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
     CommonModule,
     AuthModule,
     WorkspaceModule,
+    JobsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
