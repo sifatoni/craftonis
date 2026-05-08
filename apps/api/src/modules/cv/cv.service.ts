@@ -7,7 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
 import { ScoreCvDto } from './dto/score-cv.dto';
 import Anthropic from '@anthropic-ai/sdk';
-const pdfParse = require('pdf-parse');
+
 
 @Injectable()
 export class CvService {
@@ -32,8 +32,17 @@ export class CvService {
     // Extract text from PDF
     let cvText = '';
     try {
-      const parsed = await pdfParse(fileBuffer);
-      cvText = parsed.text;
+      const pdfParseLib = require('pdf-parse')
+      const PDFParseClass = pdfParseLib.PDFParse || pdfParseLib.default?.PDFParse
+      if (PDFParseClass) {
+        const parser = new PDFParseClass({ data: fileBuffer })
+        const result = await parser.getText()
+        cvText = result.text
+      } else {
+        const pdfParseFn = pdfParseLib.default || pdfParseLib
+        const parsed = await pdfParseFn(fileBuffer)
+        cvText = parsed.text
+      }
     } catch (e) {
       throw new BadRequestException('Could not parse PDF file');
     }
@@ -193,51 +202,134 @@ export class CvService {
 
   // ── Private Helpers ───────────────────────────────
   private async extractCvData(cvText: string): Promise<any> {
-    // If no API key, return mock data for development
-    if (!this.config.get('ANTHROPIC_API_KEY')) {
+    const openRouterKey = this.config.get('OPENROUTER_API_KEY');
+    const anthropicKey = this.config.get('ANTHROPIC_API_KEY');
+
+    // Try OpenRouter first (free), fall back to Anthropic, then mock
+    if (openRouterKey) {
+      return await this.extractWithOpenRouter(cvText, openRouterKey);
+    } else if (anthropicKey) {
+      return await this.extractWithAnthropic(cvText, anthropicKey);
+    } else {
       return this.mockExtractedData();
     }
+  }
 
+  private async extractWithOpenRouter(cvText: string, apiKey: string): Promise<any> {
     try {
-      const message = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: `Extract structured data from this CV text. Return ONLY valid JSON with no explanation.
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://craftonis.com',
+          'X-Title': 'Craftonis CV Parser',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.0-flash-exp:free',
+          max_tokens: 1500,
+          messages: [
+            {
+              role: 'user',
+              content: `Extract structured data from this CV/Resume text. Return ONLY valid JSON, no explanation, no markdown, no code blocks.
 
 CV Text:
-${cvText.substring(0, 3000)}
+${cvText.substring(0, 4000)}
 
 Return this exact JSON structure:
 {
-  "name": "string",
-  "email": "string or null",
-  "phone": "string or null",
+  "name": "Full name of the candidate",
+  "email": "email address or null",
+  "phone": "phone number or null",
+  "location": "city, country or null",
+  "linkedinUrl": "linkedin URL or null",
+  "githubUrl": "github URL or null",
+  "portfolioUrl": "portfolio/website URL or null",
   "totalYearsExperience": number,
-  "skills": ["skill1", "skill2"],
+  "currentRole": "most recent job title or null",
+  "currentCompany": "most recent company or null",
+  "summary": "professional summary in 2-3 sentences",
+  "skills": ["skill1", "skill2", "skill3"],
   "experience": [
     {
-      "company": "string",
-      "role": "string",
+      "company": "company name",
+      "role": "job title",
       "startDate": "YYYY-MM or null",
       "endDate": "YYYY-MM or present",
-      "tenureMonths": number
+      "tenureMonths": number,
+      "description": "brief description"
     }
   ],
   "education": [
     {
-      "degree": "string",
-      "institution": "string",
+      "degree": "degree name",
+      "institution": "university/college name",
       "year": number or null,
-      "level": "HIGH_SCHOOL|BACHELOR|MASTER|PHD|OTHER"
+      "level": "HIGH_SCHOOL or BACHELOR or MASTER or PHD or OTHER"
     }
   ],
-  "certifications": ["cert1", "cert2"]
-}`,
-          },
-        ],
+  "certifications": ["cert1", "cert2"],
+  "languages": ["English", "Bangla"],
+  "achievements": ["achievement1", "achievement2"]
+}`
+            }
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`OpenRouter error: ${err}`);
+      }
+
+      const data = (await response.json()) as any;
+      const text = data.choices?.[0]?.message?.content || '';
+      
+      // Clean JSON — remove any markdown if present
+      const cleanJson = text
+        .replace(/```json\n?/g, '')
+        .replace(/```\n?/g, '')
+        .trim();
+
+      const parsed = JSON.parse(cleanJson);
+      return parsed;
+    } catch (e: any) {
+      console.error('OpenRouter extraction failed:', e.message);
+      return this.mockExtractedData();
+    }
+  }
+
+  private async extractWithAnthropic(cvText: string, apiKey: string): Promise<any> {
+    try {
+      const message = await this.anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 1500,
+        messages: [
+          {
+            role: 'user',
+            content: `Extract structured data from this CV. Return ONLY valid JSON.
+
+CV Text:
+${cvText.substring(0, 3000)}
+
+Return:
+{
+  "name": "string",
+  "email": "string or null",
+  "phone": "string or null",
+  "location": "string or null",
+  "linkedinUrl": "string or null",
+  "totalYearsExperience": number,
+  "currentRole": "string or null",
+  "currentCompany": "string or null",
+  "skills": ["skill1"],
+  "experience": [{"company":"","role":"","startDate":"","endDate":"","tenureMonths":0}],
+  "education": [{"degree":"","institution":"","year":0,"level":"BACHELOR"}],
+  "certifications": [],
+  "achievements": []
+}`
+          }
+        ]
       });
 
       const text = message.content[0].type === 'text' ? message.content[0].text : '';
@@ -338,8 +430,18 @@ Return this exact JSON structure:
     for (const file of files) {
       try {
         // Extract text from PDF
-        const parsed = await pdfParse(file.buffer)
-        const cvText = parsed.text
+        const pdfParseLib = require('pdf-parse')
+        const PDFParseClass = pdfParseLib.PDFParse || pdfParseLib.default?.PDFParse
+        let cvText = ''
+        if (PDFParseClass) {
+          const parser = new PDFParseClass({ data: file.buffer })
+          const result = await parser.getText()
+          cvText = result.text
+        } else {
+          const pdfParseFn = pdfParseLib.default || pdfParseLib
+          const parsed = await pdfParseFn(file.buffer)
+          cvText = parsed.text
+        }
 
         if (!cvText || cvText.trim().length < 50) {
           results.push({ filename: file.originalname, success: false, error: 'Could not read PDF' })
@@ -350,8 +452,13 @@ Return this exact JSON structure:
         const extractedData = await this.extractCvData(cvText)
 
         // Create candidate from extracted data
-        const name = extractedData.name || file.originalname.replace('.pdf', '')
-        const email = extractedData.email || `cv_${Date.now()}_${Math.random().toString(36).slice(2)}@pending.craftonis`
+        const name = extractedData.name && extractedData.name !== 'Candidate' 
+          ? extractedData.name 
+          : file.originalname.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ').trim()
+        
+        const email = extractedData.email && extractedData.email.includes('@') && !extractedData.email.includes('null')
+          ? extractedData.email.toLowerCase().trim()
+          : `${name.toLowerCase().replace(/\s+/g, '.')}@pending.craftonis`
 
         // Check duplicate
         const existing = await this.prisma.candidate.findFirst({
@@ -376,7 +483,9 @@ Return this exact JSON structure:
             jobId,
             name,
             email,
-            phone: extractedData.phone || undefined,
+            phone: extractedData.phone && extractedData.phone !== 'null' 
+              ? extractedData.phone 
+              : undefined,
             stage: 'CV_REVIEWED',
           },
         })
@@ -425,8 +534,19 @@ Return this exact JSON structure:
       if (!response.ok) throw new Error(`Failed to fetch CV: ${response.statusText}`)
 
       const buffer = Buffer.from(await response.arrayBuffer())
-      const parsed = await pdfParse(buffer)
-      return await this.extractCvData(parsed.text)
+      const pdfParseLib = require('pdf-parse')
+      const PDFParseClass = pdfParseLib.PDFParse || pdfParseLib.default?.PDFParse
+      let cvText = ''
+      if (PDFParseClass) {
+        const parser = new PDFParseClass({ data: buffer })
+        const result = await parser.getText()
+        cvText = result.text
+      } else {
+        const pdfParseFn = pdfParseLib.default || pdfParseLib
+        const parsed = await pdfParseFn(buffer)
+        cvText = parsed.text
+      }
+      return await this.extractCvData(cvText)
     } catch (err: any) {
       throw new Error(`Could not fetch CV from URL: ${err.message}`)
     }
