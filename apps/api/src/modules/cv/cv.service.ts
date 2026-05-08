@@ -226,7 +226,7 @@ export class CvService {
           'X-Title': 'Craftonis CV Parser',
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.0-flash-exp:free',
+          model: 'openai/gpt-oss-120b:free',
           max_tokens: 1500,
           messages: [
             {
