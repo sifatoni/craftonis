@@ -322,4 +322,113 @@ Return this exact JSON structure:
     const certBonus = Math.min(certifications.length * 5, 15);
     return Math.min(100, score + certBonus);
   }
+
+  // ── Bulk CV Parse ─────────────────────────────────
+  async bulkParseCvs(
+    tenantId: string,
+    jobId: string,
+    files: Express.Multer.File[],
+  ) {
+    if (!files || files.length === 0) {
+      throw new BadRequestException('No files provided')
+    }
+
+    const results = []
+
+    for (const file of files) {
+      try {
+        // Extract text from PDF
+        const parsed = await pdfParse(file.buffer)
+        const cvText = parsed.text
+
+        if (!cvText || cvText.trim().length < 50) {
+          results.push({ filename: file.originalname, success: false, error: 'Could not read PDF' })
+          continue
+        }
+
+        // Extract structured data via Claude
+        const extractedData = await this.extractCvData(cvText)
+
+        // Create candidate from extracted data
+        const name = extractedData.name || file.originalname.replace('.pdf', '')
+        const email = extractedData.email || `cv_${Date.now()}_${Math.random().toString(36).slice(2)}@pending.craftonis`
+
+        // Check duplicate
+        const existing = await this.prisma.candidate.findFirst({
+          where: { tenantId, email, jobId },
+        })
+
+        if (existing) {
+          // Update existing candidate with parsed data
+          await this.prisma.cvScore.upsert({
+            where: { candidateId: existing.id },
+            create: { candidateId: existing.id, parsedData: extractedData, skillMatch: 0, stability: 0, education: 0, totalScore: 0 },
+            update: { parsedData: extractedData },
+          })
+          results.push({ filename: file.originalname, success: true, candidateId: existing.id, name, action: 'updated' })
+          continue
+        }
+
+        // Create new candidate
+        const candidate = await this.prisma.candidate.create({
+          data: {
+            tenantId,
+            jobId,
+            name,
+            email,
+            phone: extractedData.phone || undefined,
+            stage: 'CV_REVIEWED',
+          },
+        })
+
+        // Save parsed CV data
+        await this.prisma.cvScore.create({
+          data: {
+            candidateId: candidate.id,
+            parsedData: extractedData,
+            skillMatch: 0,
+            stability: 0,
+            education: 0,
+            totalScore: 0,
+          },
+        })
+
+        results.push({ filename: file.originalname, success: true, candidateId: candidate.id, name, action: 'created' })
+      } catch (err: any) {
+        results.push({ filename: file.originalname, success: false, error: err.message })
+      }
+    }
+
+    const created = results.filter((r) => r.success && r.action === 'created').length
+    const updated = results.filter((r) => r.success && r.action === 'updated').length
+    const failed = results.filter((r) => !r.success).length
+
+    return { results, summary: { total: files.length, created, updated, failed } }
+  }
+
+  // ── Fetch CV from URL ─────────────────────────────
+  async fetchAndParseCvFromUrl(url: string): Promise<any> {
+    try {
+      // Convert Google Drive share link to direct download
+      let downloadUrl = url
+      const gdriveMatch = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)
+      if (gdriveMatch) {
+        downloadUrl = `https://drive.google.com/uc?export=download&id=${gdriveMatch[1]}`
+      }
+      // Convert Dropbox share link
+      if (url.includes('dropbox.com')) {
+        downloadUrl = url.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '')
+      }
+
+      const fetch = (await import('node-fetch')).default
+      const response = await fetch(downloadUrl, { timeout: 15000 } as any)
+      if (!response.ok) throw new Error(`Failed to fetch CV: ${response.statusText}`)
+
+      const buffer = Buffer.from(await response.arrayBuffer())
+      const parsed = await pdfParse(buffer)
+      return await this.extractCvData(parsed.text)
+    } catch (err: any) {
+      throw new Error(`Could not fetch CV from URL: ${err.message}`)
+    }
+  }
 }

@@ -1,10 +1,9 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, Query, UseGuards,
-} from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile, Res } from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { JobsService } from './jobs.service';
+import { CvService } from '../cv/cv.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
@@ -20,7 +19,10 @@ import { Roles } from '../../common/decorators/roles.decorator';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller()
 export class JobsController {
-  constructor(private readonly jobsService: JobsService) {}
+  constructor(
+    private readonly jobsService: JobsService,
+    private readonly cvService: CvService,
+  ) {}
 
   // ── JOBS ──────────────────────────────────────────
   @Get('jobs')
@@ -112,5 +114,42 @@ export class JobsController {
     @Body() candidates: CreateCandidateDto[],
   ) {
     return this.jobsService.bulkUploadCandidates(user.tenantId, jobId, candidates);
+  }
+
+  @Get('candidates/template/excel')
+  @ApiOperation({ summary: 'Download candidate import Excel template' })
+  async downloadTemplate(@Res() res: any) {
+    const { generateCandidateTemplate } = await import('./excel-template')
+    const buffer = generateCandidateTemplate()
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="craftonis-candidate-template.xlsx"',
+      'Content-Length': buffer.length,
+    })
+    res.end(buffer)
+  }
+
+  @Post('jobs/:jobId/import-excel')
+  @Roles(Role.SUPER_ADMIN, Role.HR_MANAGER)
+  @ApiOperation({ summary: 'Import candidates from Excel file with optional CV links' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(FileInterceptor('file'))
+  async importFromExcel(
+    @CurrentUser() user: any,
+    @Param('jobId') jobId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.jobsService.importFromExcel(
+      user.tenantId,
+      jobId,
+      file.buffer,
+      this.cvService,
+    )
   }
 }

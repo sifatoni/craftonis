@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateJobDto } from './dto/create-job.dto';
@@ -220,5 +221,94 @@ export class JobsService {
       stage,
       count: stages.find((s) => s.stage === stage)?._count?.stage ?? 0,
     }));
+  }
+
+  // ── Excel Import ───────────────────────────────────
+  async importFromExcel(
+    tenantId: string,
+    jobId: string,
+    fileBuffer: Buffer,
+    cvService: any,
+  ) {
+    const { parseExcelCandidates } = await import('./excel-template')
+    const rows = parseExcelCandidates(fileBuffer)
+
+    if (rows.length === 0) {
+      throw new BadRequestException('No valid candidates found in Excel file')
+    }
+
+    const job = await this.prisma.job.findFirst({ where: { id: jobId, tenantId } })
+    if (!job) throw new NotFoundException('Job not found')
+
+    const results = []
+
+    for (const row of rows) {
+      try {
+        // Check duplicate
+        const existing = await this.prisma.candidate.findFirst({
+          where: { tenantId, email: row.email, jobId },
+        })
+        if (existing) {
+          results.push({ name: row.name, email: row.email, success: false, error: 'Duplicate' })
+          continue
+        }
+
+        // Create candidate
+        const candidate = await this.prisma.candidate.create({
+          data: {
+            tenantId,
+            jobId,
+            name: row.name,
+            email: row.email,
+            phone: row.phone,
+            stage: 'APPLIED',
+          },
+        })
+
+        // If CV link provided, fetch and parse in background
+        let parsedData: any = {
+          name: row.name,
+          email: row.email,
+          phone: row.phone,
+          skills: row.skills,
+          totalYearsExperience: row.yearsExperience,
+          currentCompany: row.currentCompany,
+          currentRole: row.currentRole,
+          location: row.location,
+          experience: [],
+          education: [],
+          certifications: [],
+        }
+
+        if (row.cvLink) {
+          try {
+            const cvData = await cvService.fetchAndParseCvFromUrl(row.cvLink)
+            parsedData = { ...parsedData, ...cvData }
+            await this.prisma.candidate.update({
+              where: { id: candidate.id },
+              data: { stage: 'CV_REVIEWED' },
+            })
+          } catch (e) {
+            // CV fetch failed, continue with Excel data
+          }
+        }
+
+        await this.prisma.cvScore.create({
+          data: {
+            candidateId: candidate.id,
+            parsedData,
+            skillMatch: 0, stability: 0, education: 0, totalScore: 0,
+          },
+        })
+
+        results.push({ name: row.name, email: row.email, success: true, candidateId: candidate.id })
+      } catch (err: any) {
+        results.push({ name: row.name, email: row.email, success: false, error: err.message })
+      }
+    }
+
+    const created = results.filter((r) => r.success).length
+    const failed = results.filter((r) => !r.success).length
+    return { results, summary: { total: rows.length, created, failed } }
   }
 }

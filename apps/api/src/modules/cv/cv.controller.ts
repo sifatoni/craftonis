@@ -1,9 +1,9 @@
 import {
   Controller, Get, Post, Body, Param,
-  UseGuards, UseInterceptors, UploadedFile,
+  UseGuards, UseInterceptors, UploadedFile, UploadedFiles,
   ParseFilePipe, MaxFileSizeValidator, FileTypeValidator,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { Role } from '@prisma/client';
 import { CvService } from './cv.service';
@@ -72,5 +72,26 @@ export class CvController {
     @Param('jobId') jobId: string,
   ) {
     return this.cvService.getJobLeaderboard(user.tenantId, jobId);
+  }
+
+  @Post('bulk-parse/:jobId')
+  @Roles(Role.SUPER_ADMIN, Role.HR_MANAGER)
+  @ApiOperation({ summary: 'Bulk upload and parse multiple CV PDFs — auto-creates candidates' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        files: { type: 'array', items: { type: 'string', format: 'binary' } },
+      },
+    },
+  })
+  @UseInterceptors(FilesInterceptor('files', 50))
+  async bulkParseCvs(
+    @CurrentUser() user: any,
+    @Param('jobId') jobId: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.cvService.bulkParseCvs(user.tenantId, jobId, files)
   }
 }
