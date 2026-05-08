@@ -12,7 +12,8 @@ import {
   ChevronRight, X, Loader2, User,
   ArrowRight, CheckCircle2, Circle,
   FileText, FileSpreadsheet, UserPlus,
-  Upload, Download, Trash2, Mail, Phone, ExternalLink
+  Upload, Download, Trash2, Mail, Phone,
+  ExternalLink, Eye, RefreshCw, MapPin,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -132,7 +133,9 @@ function CandidateDetailPanel({
   onDelete: (id: string) => void
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [reparsing, setReparsing] = useState(false)
   const deleteCandidate = useDeleteCandidate()
+  const qc = useQueryClient()
   const parsedData = candidate.cvScore?.parsedData as any
   const stage = STAGES.find((s) => s.key === candidate.stage)
 
@@ -140,6 +143,36 @@ function CandidateDetailPanel({
     await deleteCandidate.mutateAsync(candidate.id)
     onClose()
   }
+
+  const handleViewCv = () => {
+    if (!candidate.cvUrl) { toast.error('No CV uploaded yet'); return }
+    const win = window.open()
+    if (win) {
+      win.document.write(`<html><body style="margin:0;padding:0;background:#000"><embed src="${candidate.cvUrl}" type="application/pdf" width="100%" height="100%" style="position:fixed;top:0;left:0;width:100%;height:100%"/></body></html>`)
+    }
+  }
+
+  const handleReparse = async () => {
+    setReparsing(true)
+    try {
+      const token = localStorage.getItem('craftonis_access_token')
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/${candidate.id}/reparse`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+      )
+      if (!res.ok) throw new Error('Re-parse failed')
+      toast.success('CV re-parsed successfully!')
+      qc.invalidateQueries({ queryKey: ['candidates'] })
+      onClose()
+    } catch (err: any) {
+      toast.error(err.message || 'Re-parse failed')
+    } finally {
+      setReparsing(false)
+    }
+  }
+
+  const handleEmailClick = (email: string) => { window.open(`mailto:${email}`, '_blank') }
+  const handleCallClick = (phone: string) => { window.open(`tel:${phone}`, '_blank') }
 
   return (
     <motion.div
@@ -151,50 +184,33 @@ function CandidateDetailPanel({
       style={{ background: '#111111', borderColor: '#1A1A1A', maxHeight: 'calc(100vh - 160px)' }}
     >
       {/* Header */}
-      <div
-        className="flex items-center justify-between p-4 border-b sticky top-0 z-10"
-        style={{ background: '#111111', borderColor: '#1A1A1A' }}
-      >
-        <h3 className="text-sm font-semibold" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>
-          Candidate Profile
-        </h3>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowDeleteConfirm(true)}
-            className="p-1.5 rounded-lg transition-colors hover:bg-red-950"
-            style={{ color: '#DC2626' }}
-          >
-            <Trash2 size={14} />
-          </button>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
-            style={{ color: '#606060' }}
-          >
-            <X size={14} />
-          </button>
+      <div className="flex items-center justify-between p-4 border-b sticky top-0 z-10" style={{ background: '#111111', borderColor: '#1A1A1A' }}>
+        <h3 className="text-sm font-semibold" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>Candidate Profile</h3>
+        <div className="flex items-center gap-1">
+          {candidate.cvUrl && (
+            <button onClick={handleViewCv} title="View CV" className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#0284C7' }}><Eye size={14} /></button>
+          )}
+          {candidate.cvUrl && (
+            <button onClick={handleReparse} disabled={reparsing} title="Re-extract data from CV" className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#16A34A' }}>
+              {reparsing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            </button>
+          )}
+          <button onClick={() => setShowDeleteConfirm(true)} title="Remove candidate" className="p-1.5 rounded-lg transition-colors hover:bg-red-950" style={{ color: '#DC2626' }}><Trash2 size={14} /></button>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#606060' }}><X size={14} /></button>
         </div>
       </div>
 
       <div className="p-4 space-y-5">
         {/* Avatar + Name */}
         <div className="flex items-center gap-3">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0"
-            style={{ background: '#1A0000', color: '#A50000' }}
-          >
+          <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0" style={{ background: '#1A0000', color: '#A50000' }}>
             {candidate.name?.charAt(0)?.toUpperCase()}
           </div>
-          <div>
-            <h2 className="text-base font-bold break-words" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)', wordBreak: 'break-word' }}>
-              {candidate.name}
-            </h2>
-            <div
-              className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full mt-1"
-              style={{ background: `${stage?.color}15`, color: stage?.color }}
-            >
-              <Circle size={5} fill={stage?.color} />
-              {stage?.label}
+          <div className="min-w-0">
+            <h2 className="text-base font-bold break-words" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)', wordBreak: 'break-word' }}>{candidate.name}</h2>
+            {parsedData?.currentRole && <p className="text-xs mt-0.5" style={{ color: '#A50000' }}>{parsedData.currentRole}</p>}
+            <div className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full mt-1" style={{ background: `${stage?.color}15`, color: stage?.color }}>
+              <Circle size={5} fill={stage?.color} />{stage?.label}
             </div>
           </div>
         </div>
@@ -202,37 +218,37 @@ function CandidateDetailPanel({
         {/* Contact Info */}
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Contact</p>
-          {candidate.email && (
-            <div className="flex items-start gap-2">
-              <Mail size={13} style={{ color: '#A50000', flexShrink: 0, marginTop: 2 }} />
-              <span className="text-sm break-all" style={{ color: '#A0A0A0' }}>{candidate.email}</span>
+          {candidate.email && !candidate.email.includes('@pending.craftonis') && (
+            <div className="flex items-center gap-2">
+              <Mail size={13} style={{ color: '#A50000', flexShrink: 0 }} />
+              <span className="text-sm break-all flex-1" style={{ color: '#A0A0A0', wordBreak: 'break-all' }}>{candidate.email}</span>
+              <button onClick={() => handleEmailClick(candidate.email)} title="Send email" className="p-1 rounded hover:bg-white/10 flex-shrink-0" style={{ color: '#0284C7' }}><ExternalLink size={12} /></button>
             </div>
           )}
           {(candidate.phone || parsedData?.phone) && (
             <div className="flex items-center gap-2">
               <Phone size={13} style={{ color: '#A50000', flexShrink: 0 }} />
-              <span className="text-sm" style={{ color: '#A0A0A0' }}>{candidate.phone || parsedData?.phone}</span>
+              <span className="text-sm flex-1" style={{ color: '#A0A0A0' }}>{candidate.phone || parsedData?.phone}</span>
+              <button onClick={() => handleCallClick(candidate.phone || parsedData?.phone)} title="Call" className="p-1 rounded hover:bg-white/10 flex-shrink-0" style={{ color: '#16A34A' }}><Phone size={12} /></button>
             </div>
           )}
           {parsedData?.secondaryPhone && (
             <div className="flex items-center gap-2">
               <Phone size={13} style={{ color: '#606060', flexShrink: 0 }} />
-              <span className="text-sm" style={{ color: '#A0A0A0' }}>{parsedData.secondaryPhone}</span>
+              <span className="text-sm flex-1" style={{ color: '#A0A0A0' }}>{parsedData.secondaryPhone}</span>
+              <button onClick={() => handleCallClick(parsedData.secondaryPhone)} title="Call secondary" className="p-1 rounded hover:bg-white/10 flex-shrink-0" style={{ color: '#16A34A' }}><Phone size={12} /></button>
             </div>
           )}
           {parsedData?.location && (
             <div className="flex items-start gap-2">
-              <ExternalLink size={13} style={{ color: '#A50000', flexShrink: 0, marginTop: 2 }} />
+              <MapPin size={13} style={{ color: '#A50000', flexShrink: 0, marginTop: 2 }} />
               <span className="text-sm" style={{ color: '#A0A0A0' }}>{parsedData.location}</span>
             </div>
           )}
           {parsedData?.linkedinUrl && (
             <div className="flex items-center gap-2">
               <ExternalLink size={13} style={{ color: '#A50000', flexShrink: 0 }} />
-              <a href={parsedData.linkedinUrl} target="_blank" rel="noreferrer"
-                className="text-sm hover:underline" style={{ color: '#0284C7' }}>
-                LinkedIn Profile
-              </a>
+              <a href={parsedData.linkedinUrl} target="_blank" rel="noreferrer" className="text-sm hover:underline" style={{ color: '#0284C7' }}>LinkedIn Profile</a>
             </div>
           )}
         </div>
@@ -241,9 +257,7 @@ function CandidateDetailPanel({
         {parsedData?.summary && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Summary</p>
-            <p className="text-sm leading-relaxed" style={{ color: '#A0A0A0' }}>
-              {parsedData.summary}
-            </p>
+            <p className="text-sm leading-relaxed" style={{ color: '#A0A0A0' }}>{parsedData.summary}</p>
           </div>
         )}
 
@@ -253,13 +267,7 @@ function CandidateDetailPanel({
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Skills</p>
             <div className="flex flex-wrap gap-1.5">
               {parsedData.skills.slice(0, 15).map((skill: string, i: number) => (
-                <span
-                  key={i}
-                  className="text-xs px-2 py-1 rounded-lg"
-                  style={{ background: '#1A1A1A', color: '#A0A0A0' }}
-                >
-                  {skill}
-                </span>
+                <span key={i} className="text-xs px-2 py-1 rounded-lg" style={{ background: '#1A1A1A', color: '#A0A0A0' }}>{skill}</span>
               ))}
             </div>
           </div>
@@ -269,16 +277,15 @@ function CandidateDetailPanel({
         {parsedData?.experience?.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>
-              Experience ({parsedData.totalYearsExperience || '?'} years)
+              Experience {parsedData.totalYearsExperience > 0 ? `(${parsedData.totalYearsExperience} yrs)` : ''}
             </p>
             <div className="space-y-3">
               {parsedData.experience.map((exp: any, i: number) => (
                 <div key={i} className="pl-3 border-l-2" style={{ borderColor: '#2E2E2E' }}>
                   <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>{exp.role}</p>
-                  <p className="text-xs" style={{ color: '#A50000' }}>{exp.company}</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#606060' }}>
-                    {exp.startDate} — {exp.endDate} · {exp.tenureMonths ? `${Math.round(exp.tenureMonths / 12 * 10) / 10} yrs` : ''}
-                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: '#A50000' }}>{exp.company}</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#606060' }}>{exp.startDate} — {exp.endDate}</p>
+                  {exp.description && <p className="text-xs mt-1" style={{ color: '#606060' }}>{exp.description}</p>}
                 </div>
               ))}
             </div>
@@ -293,12 +300,24 @@ function CandidateDetailPanel({
               {parsedData.education.map((edu: any, i: number) => (
                 <div key={i} className="pl-3 border-l-2" style={{ borderColor: '#2E2E2E' }}>
                   <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>{edu.degree}</p>
-                  <p className="text-xs mt-0.5" style={{ color: '#A50000' }}>{edu.institution}</p>
+                  {edu.institution && <p className="text-xs mt-0.5" style={{ color: '#A50000' }}>{edu.institution}</p>}
                   <div className="flex gap-3 mt-0.5">
                     {edu.year && <p className="text-xs" style={{ color: '#606060' }}>{edu.year}</p>}
                     {edu.result && <p className="text-xs" style={{ color: '#16A34A' }}>{edu.result}</p>}
                   </div>
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Languages */}
+        {parsedData?.languages?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Languages</p>
+            <div className="flex flex-wrap gap-1.5">
+              {parsedData.languages.map((lang: string, i: number) => (
+                <span key={i} className="text-xs px-2 py-1 rounded-lg" style={{ background: '#1A1A1A', color: '#A0A0A0' }}>{lang}</span>
               ))}
             </div>
           </div>
@@ -311,39 +330,10 @@ function CandidateDetailPanel({
             <ul className="space-y-1.5">
               {parsedData.achievements.map((a: string, i: number) => (
                 <li key={i} className="flex items-start gap-2 text-sm" style={{ color: '#A0A0A0' }}>
-                  <span style={{ color: '#A50000', flexShrink: 0 }}>•</span>
-                  {a}
+                  <span style={{ color: '#A50000', flexShrink: 0 }}>•</span>{a}
                 </li>
               ))}
             </ul>
-          </div>
-        )}
-
-        {/* Certifications */}
-        {parsedData?.certifications?.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Certifications</p>
-            <ul className="space-y-1">
-              {parsedData.certifications.map((c: string, i: number) => (
-                <li key={i} className="text-sm" style={{ color: '#A0A0A0' }}>
-                  🏅 {c}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Languages */}
-        {parsedData?.languages?.length > 0 && (
-          <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Languages</p>
-            <div className="flex flex-wrap gap-1.5">
-              {parsedData.languages.map((lang: string, i: number) => (
-                <span key={i} className="text-xs px-2 py-1 rounded-lg" style={{ background: '#1A1A1A', color: '#A0A0A0' }}>
-                  {lang}
-                </span>
-              ))}
-            </div>
           </div>
         )}
 
@@ -359,9 +349,9 @@ function CandidateDetailPanel({
                 { label: 'Marital Status', value: parsedData.personalDetails?.maritalStatus },
                 { label: 'Religion', value: parsedData.personalDetails?.religion },
               ].filter(item => item.value && item.value !== 'null').map((item, i) => (
-                <div key={i} className="flex justify-between">
-                  <span className="text-xs" style={{ color: '#606060' }}>{item.label}</span>
-                  <span className="text-xs" style={{ color: '#A0A0A0' }}>{item.value}</span>
+                <div key={i} className="flex justify-between gap-2">
+                  <span className="text-xs flex-shrink-0" style={{ color: '#606060' }}>{item.label}</span>
+                  <span className="text-xs text-right" style={{ color: '#A0A0A0' }}>{item.value}</span>
                 </div>
               ))}
             </div>
@@ -372,40 +362,15 @@ function CandidateDetailPanel({
       {/* Delete Confirm */}
       <AnimatePresence>
         {showDeleteConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            style={{ background: 'rgba(0,0,0,0.8)' }}
-          >
-            <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              className="rounded-xl p-6 w-full max-w-sm"
-              style={{ background: '#111111', border: '1px solid #2E2E2E' }}
-            >
-              <h3 className="text-base font-bold mb-2" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>
-                Remove Candidate?
-              </h3>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.8)' }}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="rounded-xl p-6 w-full max-w-sm" style={{ background: '#111111', border: '1px solid #2E2E2E' }}>
+              <h3 className="text-base font-bold mb-2" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>Remove Candidate?</h3>
               <p className="text-sm mb-4" style={{ color: '#A0A0A0' }}>
-                This will permanently delete <strong style={{ color: '#FFFFFF' }}>{candidate.name}</strong> and all their data. This cannot be undone.
+                This will permanently delete <strong style={{ color: '#FFFFFF' }}>{candidate.name}</strong> and all their data.
               </p>
               <div className="flex gap-3">
-                <Button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  variant="outline"
-                  className="flex-1 h-9"
-                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleDelete}
-                  disabled={deleteCandidate.isPending}
-                  className="flex-1 h-9"
-                  style={{ background: '#DC2626', color: '#FFFFFF', border: 'none' }}
-                >
+                <Button onClick={() => setShowDeleteConfirm(false)} variant="outline" className="flex-1 h-9" style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>Cancel</Button>
+                <Button onClick={handleDelete} disabled={deleteCandidate.isPending} className="flex-1 h-9" style={{ background: '#DC2626', color: '#FFFFFF', border: 'none' }}>
                   {deleteCandidate.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Remove'}
                 </Button>
               </div>

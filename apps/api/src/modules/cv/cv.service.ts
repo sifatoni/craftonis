@@ -205,18 +205,49 @@ export class CvService {
     const openRouterKey = this.config.get('OPENROUTER_API_KEY');
     const anthropicKey = this.config.get('ANTHROPIC_API_KEY');
 
-    // Try OpenRouter first (free), fall back to Anthropic, then mock
-    if (openRouterKey) {
-      return await this.extractWithOpenRouter(cvText, openRouterKey);
-    } else if (anthropicKey) {
-      return await this.extractWithAnthropic(cvText, anthropicKey);
-    } else {
-      return this.mockExtractedData();
+    // Always extract basic info via regex first (guaranteed accuracy)
+    const basicInfo = this.extractBasicInfoFromText(cvText);
+    console.log('Regex extracted:', basicInfo);
+
+    let aiData: any = {};
+    try {
+      if (openRouterKey) {
+        aiData = await this.extractWithOpenRouter(cvText, openRouterKey);
+      } else if (anthropicKey) {
+        aiData = await this.extractWithAnthropic(cvText, anthropicKey);
+      }
+    } catch (e) {
+      console.error('AI extraction failed, using regex only');
     }
+
+    // Merge: prefer AI data if not null, fall back to regex
+    return {
+      name: (aiData.name && aiData.name !== 'null') ? aiData.name : basicInfo.name,
+      email: (aiData.email && aiData.email?.includes('@')) ? aiData.email : basicInfo.email,
+      phone: (aiData.phone && aiData.phone !== 'null') ? aiData.phone : basicInfo.phone,
+      secondaryPhone: aiData.secondaryPhone || basicInfo.secondaryPhone,
+      location: aiData.location || basicInfo.location,
+      linkedinUrl: aiData.linkedinUrl || basicInfo.linkedinUrl,
+      summary: aiData.summary || basicInfo.summary,
+      // Rest from AI (or empty arrays if AI failed)
+      totalYearsExperience: aiData.totalYearsExperience || 0,
+      currentRole: aiData.currentRole || null,
+      currentCompany: aiData.currentCompany || null,
+      skills: aiData.skills || [],
+      experience: aiData.experience || [],
+      education: aiData.education || [],
+      certifications: aiData.certifications || [],
+      languages: aiData.languages || [],
+      achievements: aiData.achievements || [],
+      personalDetails: aiData.personalDetails || {},
+    };
   }
 
   private async extractWithOpenRouter(cvText: string, apiKey: string): Promise<any> {
     try {
+      console.log('Sending to OpenRouter, text length:', cvText.length);
+      console.log('Text preview:', cvText.substring(0, 300));
+
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -306,15 +337,31 @@ Return ONLY this JSON (no markdown, no explanation, no code blocks):
       }
 
       const data = (await response.json()) as any;
-      const text = data.choices?.[0]?.message?.content || '';
+      let text = data.choices?.[0]?.message?.content || '';
       
-      // Clean JSON — remove any markdown if present
-      const cleanJson = text
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
+      console.log('OpenRouter raw response (first 300 chars):', text.substring(0, 300));
 
-      const parsed = JSON.parse(cleanJson);
+      // Remove <think>...</think> reasoning blocks if present
+      text = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+      
+      // Remove markdown code blocks
+      text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      
+      // Find JSON object — extract from first { to last }
+      const firstBrace = text.indexOf('{');
+      const lastBrace = text.lastIndexOf('}');
+      if (firstBrace === -1 || lastBrace === -1) {
+        console.error('No JSON found in response:', text.substring(0, 200));
+        throw new Error('No JSON object found in response');
+      }
+      
+      const jsonStr = text.substring(firstBrace, lastBrace + 1);
+      const parsed = JSON.parse(jsonStr);
+      
+      console.log('Extracted name:', parsed.name);
+      console.log('Extracted email:', parsed.email);
+      console.log('Extracted phone:', parsed.phone);
+      
       return parsed;
     } catch (e: any) {
       console.error('OpenRouter extraction failed:', e.message);
@@ -466,6 +513,9 @@ Return:
           cvText = parsed.text
         }
 
+        console.log('CV text length:', cvText.length);
+        console.log('CV text preview (first 500 chars):', cvText.substring(0, 500));
+
         if (!cvText || cvText.trim().length < 50) {
           results.push({ filename: file.originalname, success: false, error: 'Could not read PDF' })
           continue
@@ -507,6 +557,10 @@ Return:
           continue
         }
 
+        // Convert buffer to base64 for storage (temporary until R2 is set up)
+        const cvBase64 = file.buffer.toString('base64')
+        const cvDataUrl = `data:application/pdf;base64,${cvBase64}`
+        
         // Create new candidate
         const candidate = await this.prisma.candidate.create({
           data: {
@@ -517,6 +571,7 @@ Return:
             phone: extractedData.phone && extractedData.phone !== 'null' 
               ? extractedData.phone 
               : undefined,
+            cvUrl: cvDataUrl,
             stage: 'CV_REVIEWED',
           },
         })
@@ -544,6 +599,54 @@ Return:
     const failed = results.filter((r) => !r.success).length
 
     return { results, summary: { total: files.length, created, updated, failed } }
+  }
+
+  // ── Re-parse CV ────────────────────────────────────
+  async reparseCv(candidateId: string, tenantId: string) {
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, tenantId },
+      include: { cvScore: true },
+    })
+    if (!candidate) throw new NotFoundException('Candidate not found')
+    if (!candidate.cvUrl) throw new BadRequestException('No CV uploaded for this candidate')
+
+    // Extract base64 PDF data
+    const base64Data = candidate.cvUrl.replace('data:application/pdf;base64,', '')
+    const buffer = Buffer.from(base64Data, 'base64')
+
+    // Re-parse
+    const pdfParseLib = require('pdf-parse')
+    const PDFParseClass = pdfParseLib.PDFParse || pdfParseLib.default?.PDFParse
+    let cvText = ''
+    if (PDFParseClass) {
+      const parser = new PDFParseClass({ data: buffer })
+      const result = await parser.getText()
+      cvText = result.text
+    } else {
+      const pdfParseFn = pdfParseLib.default || pdfParseLib
+      const parsed = await pdfParseFn(buffer)
+      cvText = parsed.text
+    }
+
+    const extractedData = await this.extractCvData(cvText)
+
+    await this.prisma.cvScore.upsert({
+      where: { candidateId },
+      create: { candidateId, parsedData: extractedData, skillMatch: 0, stability: 0, education: 0, totalScore: 0 },
+      update: { parsedData: extractedData },
+    })
+
+    // Update candidate basic info
+    await this.prisma.candidate.update({
+      where: { id: candidateId },
+      data: {
+        name: extractedData.name || candidate.name,
+        email: extractedData.email || candidate.email,
+        phone: extractedData.phone || candidate.phone || undefined,
+      },
+    })
+
+    return { success: true, message: 'CV re-parsed successfully', extractedData }
   }
 
   // ── Fetch CV from URL ─────────────────────────────
@@ -581,5 +684,143 @@ Return:
     } catch (err: any) {
       throw new Error(`Could not fetch CV from URL: ${err.message}`)
     }
+  }
+
+  // ── Regex Extraction (Fallback) ──────────────────
+  private extractBasicInfoFromText(cvText: string): any {
+    const lines = cvText.split('\n').map(l => l.trim()).filter(Boolean);
+    
+    // Name — first non-empty line
+    const name = lines[0] || null;
+    
+    // Email
+    const emailMatch = cvText.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+    const email = emailMatch ? emailMatch[0] : null;
+    
+    // Phone
+    const phoneMatch = cvText.match(/(?:Primary Mobile No\.|Mobile No\.|Phone|Tel)[.:\s]*([+\d\s()-]{10,})/i)
+      || cvText.match(/(\+?880\d{10}|01\d{9})/);
+    const phone = phoneMatch ? phoneMatch[1]?.replace(/[\s()-]/g, '').trim() : null;
+    
+    // Secondary phone
+    const secPhoneMatch = cvText.match(/Secondary Mobile No\.[.:\s]*([+\d\s()-]{10,})/i);
+    const secondaryPhone = secPhoneMatch ? secPhoneMatch[1]?.replace(/[\s()-]/g, '').trim() : null;
+    
+    // Location
+    const addressMatch = cvText.match(/Address[:\s]+([^\n]+)/i);
+    const location = addressMatch ? addressMatch[1].trim() : null;
+    
+    // LinkedIn
+    const linkedinMatch = cvText.match(/linkedin\.com\/in\/[\w-]+/i);
+    const linkedinUrl = linkedinMatch ? `https://${linkedinMatch[0]}` : null;
+    
+    // Summary
+    const summaryMatch = cvText.match(/(?:Career Objective|Caree Objective|Professional Summary|Objective)[:\s]*\n([\s\S]{50,300}?)(?:\n\n|\nWork|\nExperience|\nEducation|$)/i);
+    const summary = summaryMatch ? summaryMatch[1].replace(/\n/g, ' ').trim() : null;
+    
+    // Experience — extract work experience blocks
+    const experience: any[] = [];
+    const expSection = cvText.match(/Work Experience[:\s]*\n([\s\S]+?)(?:\nAcademic|\nEducation|\nKey Skills|\nLanguage|$)/i);
+    if (expSection) {
+      const expText = expSection[1];
+      // Match job entries: Title Company, Location (Date – Date)
+      const jobMatches = expText.matchAll(/([A-Z][^\n]+?)\s+([A-Z][^\n]+?(?:School|Company|Ltd|Inc|Corp|Institute|University|Bank|Group)[^\n]*)[,\s]+([A-Za-z, ]+)\s*\(([^)]+)\)/g);
+      for (const match of jobMatches) {
+        const dateRange = match[4];
+        const dates = dateRange.split('\u2013').map((d: string) => d.trim());
+        experience.push({
+          role: match[1].trim(),
+          company: match[2].trim(),
+          location: match[3].trim(),
+          startDate: dates[0] || null,
+          endDate: dates[1] || 'Present',
+          tenureMonths: 0,
+          description: '',
+        });
+      }
+    }
+    
+    // Education — extract from academic table
+    const education: any[] = [];
+    const eduLines = cvText.match(/(?:Masters?|Honours?|Bachelor|HSC|SSC|MBA|BBA|BSc|MSc)[^\n]*/gi);
+    if (eduLines) {
+      const degreeMap: Record<string, string> = {
+        'masters': 'MASTER', 'master': 'MASTER', 'msc': 'MASTER', 'mba': 'MASTER',
+        'honours': 'BACHELOR', 'honor': 'BACHELOR', 'bachelor': 'BACHELOR',
+        'bsc': 'BACHELOR', 'bba': 'BACHELOR', 'hons': 'BACHELOR',
+        'hsc': 'HIGH_SCHOOL', 'ssc': 'HIGH_SCHOOL', 'a level': 'HIGH_SCHOOL',
+      };
+      
+      eduLines.forEach(line => {
+        const lower = line.toLowerCase();
+        let level = 'OTHER';
+        for (const [key, val] of Object.entries(degreeMap)) {
+          if (lower.includes(key)) { level = val; break; }
+        }
+        
+        // Find year in line
+        const yearMatch = line.match(/\b(19|20)\d{2}\b/);
+        const year = yearMatch ? parseInt(yearMatch[0]) : null;
+        
+        // Find CGPA/GPA
+        const gradeMatch = line.match(/(?:CGPA|GPA)[:\s]*([\d.]+)/i);
+        const result = gradeMatch ? gradeMatch[0] : null;
+        
+        education.push({
+          degree: line.split(/\s{3,}|\t/)[0].trim(),
+          institution: '',
+          year,
+          result,
+          level,
+        });
+      });
+    }
+    
+    // Skills — look for skills section
+    const skillsMatch = cvText.match(/(?:Key Skills|Skills)[:\s]*\n([\s\S]+?)(?:\n\n|\nLanguage|\nPersonal|$)/i);
+    const skills: string[] = [];
+    if (skillsMatch) {
+      const skillLines = skillsMatch[1].split('\n');
+      skillLines.forEach(line => {
+        const clean = line.replace(/^[\u2022\-*]\s*/, '').trim();
+        if (clean.length > 5 && clean.length < 100) skills.push(clean);
+      });
+    }
+    
+    // Languages
+    const languages: string[] = [];
+    if (cvText.match(/Bangla/i)) languages.push('Bangla');
+    if (cvText.match(/English/i)) languages.push('English');
+    if (cvText.match(/Arabic/i)) languages.push('Arabic');
+    if (cvText.match(/Hindi/i)) languages.push('Hindi');
+    
+    // Personal details
+    const dobMatch = cvText.match(/Date of Birth[:\s]+([^\n]+)/i);
+    const genderMatch = cvText.match(/Gender[:\s]+([^\n]+)/i);
+    const nationalityMatch = cvText.match(/Nationality[:\s]+([^\n]+)/i);
+    const religionMatch = cvText.match(/Religion[:\s]+([^\n]+)/i);
+    const maritalMatch = cvText.match(/Marital Status[:\s]+([^\n]+)/i);
+    const nidMatch = cvText.match(/National ID No\.[:\s]+([^\n]+)/i);
+    
+    return {
+      name, email, phone, secondaryPhone, location, linkedinUrl, summary,
+      skills,
+      experience,
+      education,
+      languages,
+      totalYearsExperience: experience.length > 0 ? 1 : 0,
+      currentRole: experience[0]?.role || null,
+      currentCompany: experience[0]?.company || null,
+      certifications: [],
+      achievements: [],
+      personalDetails: {
+        dateOfBirth: dobMatch ? dobMatch[1].trim() : null,
+        gender: genderMatch ? genderMatch[1].trim() : null,
+        nationality: nationalityMatch ? nationalityMatch[1].trim() : null,
+        religion: religionMatch ? religionMatch[1].trim() : null,
+        maritalStatus: maritalMatch ? maritalMatch[1].trim() : null,
+        nationalId: nidMatch ? nidMatch[1].trim() : null,
+      },
+    };
   }
 }

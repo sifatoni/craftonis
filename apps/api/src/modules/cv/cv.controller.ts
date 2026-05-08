@@ -94,4 +94,14 @@ export class CvController {
   ) {
     return this.cvService.bulkParseCvs(user.tenantId, jobId, files)
   }
+
+  @Post(':candidateId/reparse')
+  @Roles(Role.SUPER_ADMIN, Role.HR_MANAGER)
+  @ApiOperation({ summary: 'Re-parse CV and re-extract all data' })
+  async reparseCv(
+    @CurrentUser() user: any,
+    @Param('candidateId') candidateId: string,
+  ) {
+    return this.cvService.reparseCv(candidateId, user.tenantId)
+  }
 }
