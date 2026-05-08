@@ -451,10 +451,18 @@ Return:
         // Extract structured data via Claude
         const extractedData = await this.extractCvData(cvText)
 
-        // Create candidate from extracted data
-        const name = extractedData.name && extractedData.name !== 'Candidate' 
-          ? extractedData.name 
-          : file.originalname.replace(/\.pdf$/i, '').replace(/[-_]/g, ' ').trim()
+        // Only use filename as absolute last resort
+        const rawName = extractedData.name
+        const isValidName = rawName 
+          && rawName !== 'Candidate' 
+          && rawName !== 'null'
+          && rawName.length > 1
+          && rawName.toLowerCase() !== file.originalname.toLowerCase().replace(/\.pdf$/i, '').trim().toLowerCase()
+          && !/cv|resume|curriculum|vitae/i.test(rawName)
+        
+        const name = isValidName 
+          ? rawName.trim()
+          : `Candidate (${file.originalname.replace(/\.pdf$/i, '').trim()})`
         
         const email = extractedData.email && extractedData.email.includes('@') && !extractedData.email.includes('null')
           ? extractedData.email.toLowerCase().trim()

@@ -152,4 +152,14 @@ export class JobsController {
       this.cvService,
     )
   }
+
+  @Delete('candidates/:id')
+  @Roles(Role.SUPER_ADMIN, Role.HR_MANAGER)
+  @ApiOperation({ summary: 'Remove a candidate' })
+  deleteCandidate(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+  ) {
+    return this.jobsService.deleteCandidate(user.tenantId, id)
+  }
 }

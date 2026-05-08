@@ -311,4 +311,18 @@ export class JobsService {
     const failed = results.filter((r) => !r.success).length
     return { results, summary: { total: rows.length, created, failed } }
   }
+
+  async deleteCandidate(tenantId: string, candidateId: string) {
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, tenantId },
+    })
+    if (!candidate) throw new NotFoundException('Candidate not found')
+
+    // Delete related records first
+    await this.prisma.cvScore.deleteMany({ where: { candidateId } })
+    await this.prisma.interview.deleteMany({ where: { candidateId } })
+    await this.prisma.candidate.delete({ where: { id: candidateId } })
+
+    return { success: true, message: 'Candidate removed' }
+  }
 }

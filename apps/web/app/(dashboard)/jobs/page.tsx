@@ -12,7 +12,7 @@ import {
   ChevronRight, X, Loader2, User,
   ArrowRight, CheckCircle2, Circle,
   FileText, FileSpreadsheet, UserPlus,
-  Upload, Download,
+  Upload, Download, Trash2, Mail, Phone, ExternalLink
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,6 +31,7 @@ import {
   usePipelineStats,
   useUpdateCandidateStage,
   useCreateCandidate,
+  useDeleteCandidate,
 } from '@/hooks/useJobs'
 
 // ── Constants ─────────────────────────────────────────────
@@ -120,53 +121,303 @@ function JobCard({
   )
 }
 
+// ── Candidate Detail Panel ──────────────────────────────────
+function CandidateDetailPanel({
+  candidate,
+  onClose,
+  onDelete,
+}: {
+  candidate: any
+  onClose: () => void
+  onDelete: (id: string) => void
+}) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const deleteCandidate = useDeleteCandidate()
+  const parsedData = candidate.cvScore?.parsedData as any
+  const stage = STAGES.find((s) => s.key === candidate.stage)
+
+  const handleDelete = async () => {
+    await deleteCandidate.mutateAsync(candidate.id)
+    onClose()
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      transition={{ duration: 0.2 }}
+      className="w-96 flex-shrink-0 rounded-xl border overflow-y-auto"
+      style={{ background: '#111111', borderColor: '#1A1A1A', maxHeight: 'calc(100vh - 160px)' }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between p-4 border-b sticky top-0 z-10"
+        style={{ background: '#111111', borderColor: '#1A1A1A' }}
+      >
+        <h3 className="text-sm font-semibold" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>
+          Candidate Profile
+        </h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="p-1.5 rounded-lg transition-colors hover:bg-red-950"
+            style={{ color: '#DC2626' }}
+          >
+            <Trash2 size={14} />
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
+            style={{ color: '#606060' }}
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-5">
+        {/* Avatar + Name */}
+        <div className="flex items-center gap-3">
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0"
+            style={{ background: '#1A0000', color: '#A50000' }}
+          >
+            {candidate.name?.charAt(0)?.toUpperCase()}
+          </div>
+          <div>
+            <h2 className="text-base font-bold" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>
+              {candidate.name}
+            </h2>
+            <div
+              className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full mt-1"
+              style={{ background: `${stage?.color}15`, color: stage?.color }}
+            >
+              <Circle size={5} fill={stage?.color} />
+              {stage?.label}
+            </div>
+          </div>
+        </div>
+
+        {/* Contact Info */}
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Contact</p>
+          {[
+            { icon: Mail, label: candidate.email },
+            { icon: Phone, label: candidate.phone || 'Not provided' },
+          ].map((item, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <item.icon size={13} style={{ color: '#A50000', flexShrink: 0 }} />
+              <span className="text-sm" style={{ color: candidate.phone || i === 0 ? '#A0A0A0' : '#3D3D3D' }}>
+                {item.label}
+              </span>
+            </div>
+          ))}
+          {parsedData?.linkedinUrl && (
+            <div className="flex items-center gap-2">
+              <ExternalLink size={13} style={{ color: '#A50000', flexShrink: 0 }} />
+              <a
+                href={parsedData.linkedinUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm hover:underline"
+                style={{ color: '#0284C7' }}
+              >
+                LinkedIn Profile
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* Summary */}
+        {parsedData?.summary && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Summary</p>
+            <p className="text-sm leading-relaxed" style={{ color: '#A0A0A0' }}>
+              {parsedData.summary}
+            </p>
+          </div>
+        )}
+
+        {/* Skills */}
+        {parsedData?.skills?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Skills</p>
+            <div className="flex flex-wrap gap-1.5">
+              {parsedData.skills.slice(0, 15).map((skill: string, i: number) => (
+                <span
+                  key={i}
+                  className="text-xs px-2 py-1 rounded-lg"
+                  style={{ background: '#1A1A1A', color: '#A0A0A0' }}
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Experience */}
+        {parsedData?.experience?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>
+              Experience ({parsedData.totalYearsExperience || '?'} years)
+            </p>
+            <div className="space-y-3">
+              {parsedData.experience.map((exp: any, i: number) => (
+                <div key={i} className="pl-3 border-l-2" style={{ borderColor: '#2E2E2E' }}>
+                  <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>{exp.role}</p>
+                  <p className="text-xs" style={{ color: '#A50000' }}>{exp.company}</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#606060' }}>
+                    {exp.startDate} — {exp.endDate} · {exp.tenureMonths ? `${Math.round(exp.tenureMonths / 12 * 10) / 10} yrs` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Education */}
+        {parsedData?.education?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Education</p>
+            <div className="space-y-2">
+              {parsedData.education.map((edu: any, i: number) => (
+                <div key={i} className="pl-3 border-l-2" style={{ borderColor: '#2E2E2E' }}>
+                  <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>{edu.degree}</p>
+                  <p className="text-xs" style={{ color: '#A0A0A0' }}>{edu.institution}</p>
+                  {edu.year && <p className="text-xs" style={{ color: '#606060' }}>{edu.year}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Achievements */}
+        {parsedData?.achievements?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Achievements</p>
+            <ul className="space-y-1.5">
+              {parsedData.achievements.map((a: string, i: number) => (
+                <li key={i} className="flex items-start gap-2 text-sm" style={{ color: '#A0A0A0' }}>
+                  <span style={{ color: '#A50000', flexShrink: 0 }}>•</span>
+                  {a}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Certifications */}
+        {parsedData?.certifications?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Certifications</p>
+            <ul className="space-y-1">
+              {parsedData.certifications.map((c: string, i: number) => (
+                <li key={i} className="text-sm" style={{ color: '#A0A0A0' }}>
+                  🏅 {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Languages */}
+        {parsedData?.languages?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Languages</p>
+            <div className="flex flex-wrap gap-1.5">
+              {parsedData.languages.map((lang: string, i: number) => (
+                <span key={i} className="text-xs px-2 py-1 rounded-lg" style={{ background: '#1A1A1A', color: '#A0A0A0' }}>
+                  {lang}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Delete Confirm */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.8)' }}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              className="rounded-xl p-6 w-full max-w-sm"
+              style={{ background: '#111111', border: '1px solid #2E2E2E' }}
+            >
+              <h3 className="text-base font-bold mb-2" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>
+                Remove Candidate?
+              </h3>
+              <p className="text-sm mb-4" style={{ color: '#A0A0A0' }}>
+                This will permanently delete <strong style={{ color: '#FFFFFF' }}>{candidate.name}</strong> and all their data. This cannot be undone.
+              </p>
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  variant="outline"
+                  className="flex-1 h-9"
+                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleDelete}
+                  disabled={deleteCandidate.isPending}
+                  className="flex-1 h-9"
+                  style={{ background: '#DC2626', color: '#FFFFFF', border: 'none' }}
+                >
+                  {deleteCandidate.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Remove'}
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
 // ── Candidate Card ────────────────────────────────────────
 function CandidateCard({
-  candidate, onStageChange,
+  candidate, onStageChange, onSelect, isSelected,
 }: {
-  candidate: any; onStageChange: (id: string, stage: string) => void
+  candidate: any
+  onStageChange: (id: string, stage: string) => void
+  onSelect: (candidate: any) => void
+  isSelected: boolean
 }) {
   const stage = STAGES.find((s) => s.key === candidate.stage)
   const score = candidate.cvScore?.totalScore
   const nextStage = STAGES[STAGES.findIndex((s) => s.key === candidate.stage) + 1]
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const qc = useQueryClient()
 
   const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (file.type !== 'application/pdf') {
-      toast.error('Only PDF files are supported')
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('File size must be under 5MB')
-      return
-    }
-
+    if (file.type !== 'application/pdf') { toast.error('Only PDF files are supported'); return }
+    if (file.size > 5 * 1024 * 1024) { toast.error('File size must be under 5MB'); return }
     setUploading(true)
     try {
       const formData = new FormData()
       formData.append('file', file)
-
       const token = localStorage.getItem('craftonis_access_token')
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/cv/${candidate.id}/parse`,
-        {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        }
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
       )
-
-      if (!response.ok) {
-        const err = await response.json()
-        throw new Error(err.message || 'Upload failed')
-      }
-
+      if (!response.ok) { const err = await response.json(); throw new Error(err.message || 'Upload failed') }
       toast.success('CV uploaded and parsed successfully!')
-      // Refresh candidates
-      window.location.reload()
+      qc.invalidateQueries({ queryKey: ['candidates'] })
     } catch (err: any) {
       toast.error(err.message || 'Failed to upload CV')
     } finally {
@@ -179,8 +430,12 @@ function CandidateCard({
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      className="p-4 rounded-xl border mb-3"
-      style={{ background: '#111111', borderColor: '#1A1A1A' }}
+      className="p-4 rounded-xl border mb-3 cursor-pointer transition-all"
+      style={{
+        background: isSelected ? '#1A0000' : '#111111',
+        borderColor: isSelected ? '#A50000' : '#1A1A1A',
+      }}
+      onClick={() => onSelect(candidate)}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
@@ -191,106 +446,59 @@ function CandidateCard({
             {candidate.name?.charAt(0)?.toUpperCase()}
           </div>
           <div>
-            <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>
-              {candidate.name}
-            </p>
-            <p className="text-xs" style={{ color: '#606060' }}>
-              {candidate.email}
-            </p>
+            <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>{candidate.name}</p>
+            <p className="text-xs" style={{ color: '#606060' }}>{candidate.email}</p>
           </div>
         </div>
-
         {score !== undefined && score !== null && score > 0 ? (
-          <div
-            className="text-xs font-bold px-2 py-1 rounded-lg"
-            style={{
-              background: score >= 70 ? '#052E16' : score >= 50 ? '#1C1007' : '#1A0000',
-              color: score >= 70 ? '#16A34A' : score >= 50 ? '#D97706' : '#A50000',
-            }}
-          >
+          <div className="text-xs font-bold px-2 py-1 rounded-lg" style={{
+            background: score >= 70 ? '#052E16' : score >= 50 ? '#1C1007' : '#1A0000',
+            color: score >= 70 ? '#16A34A' : score >= 50 ? '#D97706' : '#A50000',
+          }}>
             {Math.round(score)}%
           </div>
         ) : (
-          <div
-            className="text-xs px-2 py-1 rounded-lg"
-            style={{ background: '#1A1A1A', color: '#606060' }}
-          >
-            No score
-          </div>
+          <div className="text-xs px-2 py-1 rounded-lg" style={{ background: '#1A1A1A', color: '#606060' }}>No score</div>
         )}
       </div>
 
-      {/* CV Upload / Score section */}
-      <div
-        className="mt-3 pt-3 flex items-center gap-2"
-        style={{ borderTop: '1px solid #1A1A1A' }}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf"
-          className="hidden"
-          onChange={handleCvUpload}
-        />
-
+      <div className="mt-3 pt-3 flex items-center gap-2" style={{ borderTop: '1px solid #1A1A1A' }} onClick={(e) => e.stopPropagation()}>
+        <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handleCvUpload} />
         {!candidate.cvScore ? (
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0"
-            style={{
-              background: '#1A1A1A',
-              color: uploading ? '#606060' : '#A0A0A0',
-              border: '1px dashed #2E2E2E',
-            }}
+            style={{ background: '#1A1A1A', color: uploading ? '#606060' : '#A0A0A0', border: '1px dashed #2E2E2E' }}
           >
-            {uploading ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Upload size={12} />
-            )}
-            {uploading ? 'Uploading...' : 'Upload CV (PDF)'}
+            {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            {uploading ? 'Uploading...' : 'Upload CV'}
           </button>
         ) : (
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
             className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0"
-            style={{
-              background: '#052E16',
-              color: '#16A34A',
-              border: '1px solid #16A34A20',
-            }}
+            style={{ background: '#052E16', color: '#16A34A', border: '1px solid #16A34A20' }}
           >
-            {uploading ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <CheckCircle2 size={12} />
-            )}
+            {uploading ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
             {uploading ? 'Uploading...' : 'CV Uploaded — Replace'}
           </button>
         )}
-
         <div className="flex-1" />
-
         {nextStage && nextStage.key !== 'REJECTED' && (
           <button
-            onClick={() => onStageChange(candidate.id, nextStage.key)}
+            onClick={(e) => { e.stopPropagation(); onStageChange(candidate.id, nextStage.key) }}
             className="flex items-center gap-1 text-xs transition-colors hover:opacity-80 flex-shrink-0"
             style={{ color: nextStage.color }}
           >
-            {nextStage.label}
-            <ArrowRight size={12} />
+            {nextStage.label} <ArrowRight size={12} />
           </button>
         )}
       </div>
 
-      {/* Stage badge */}
       <div className="mt-2">
-        <div
-          className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
-          style={{ background: `${stage?.color}15`, color: stage?.color }}
-        >
+        <div className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full" style={{ background: `${stage?.color}15`, color: stage?.color }}>
           <Circle size={6} fill={stage?.color} />
           {stage?.label}
         </div>
@@ -929,6 +1137,7 @@ export default function JobsPage() {
   const [showCreateJob, setShowCreateJob] = useState(false)
   const [showAddCandidate, setShowAddCandidate] = useState(false)
   const [stageFilter, setStageFilter] = useState<string | null>(null)
+  const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null)
 
   const { data: jobs, isLoading: jobsLoading } = useJobs({ search: search || undefined })
   const { data: candidates, isLoading: candidatesLoading } = useCandidates(selectedJobId || '')
@@ -1125,6 +1334,8 @@ export default function JobsPage() {
                     <CandidateCard
                       key={candidate.id}
                       candidate={candidate}
+                      isSelected={selectedCandidate?.id === candidate.id}
+                      onSelect={setSelectedCandidate}
                       onStageChange={(id, stage) =>
                         updateStage.mutate({ id, stage })
                       }
@@ -1136,6 +1347,17 @@ export default function JobsPage() {
           </>
         )}
       </div>
+
+      {/* Candidate Detail Panel */}
+      <AnimatePresence>
+        {selectedCandidate && (
+          <CandidateDetailPanel
+            candidate={selectedCandidate}
+            onClose={() => setSelectedCandidate(null)}
+            onDelete={() => setSelectedCandidate(null)}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Modals */}
       <CreateJobModal

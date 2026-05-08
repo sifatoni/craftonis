@@ -52,11 +52,26 @@ export function useUpdateCandidateStage() {
   return useMutation({
     mutationFn: ({ id, stage }: { id: string; stage: string }) =>
       api.put(`/candidates/${id}/stage`, { stage }).then((r) => r.data),
-    onSuccess: (_, vars) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['candidates'] })
+      qc.invalidateQueries({ queryKey: ['pipeline-stats'] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
       toast.success('Stage updated!')
     },
     onError: () => toast.error('Failed to update stage'),
+  })
+}
+
+export function useDeleteCandidate() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/candidates/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['candidates'] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      toast.success('Candidate removed')
+    },
+    onError: () => toast.error('Failed to remove candidate'),
   })
 }
 
