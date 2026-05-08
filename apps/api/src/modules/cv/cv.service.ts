@@ -231,46 +231,69 @@ export class CvService {
           messages: [
             {
               role: 'user',
-              content: `Extract structured data from this CV/Resume text. Return ONLY valid JSON, no explanation, no markdown, no code blocks.
+              content: `You are a CV/Resume parser. Extract ALL information from the following CV text.
+Be thorough — find every piece of information available.
 
-CV Text:
-${cvText.substring(0, 4000)}
+IMPORTANT RULES:
+- Extract the FULL NAME from the very beginning of the CV (usually the largest text)
+- Extract ALL phone numbers (primary and secondary)
+- Extract ALL email addresses
+- Extract the complete address/location
+- For Bangladeshi CVs, look for "Primary Mobile No.", "Secondary Mobile No.", "Primary Email"
+- Extract ALL work experience entries with exact dates
+- Extract ALL education with institutions, degrees, results, and years
+- Look for skills, achievements, languages, references
 
-Return this exact JSON structure:
+CV TEXT:
+\${cvText.substring(0, 5000)}
+
+Return ONLY this JSON (no markdown, no explanation, no code blocks):
 {
-  "name": "Full name of the candidate",
-  "email": "email address or null",
-  "phone": "phone number or null",
-  "location": "city, country or null",
-  "linkedinUrl": "linkedin URL or null",
-  "githubUrl": "github URL or null",
-  "portfolioUrl": "portfolio/website URL or null",
-  "totalYearsExperience": number,
-  "currentRole": "most recent job title or null",
-  "currentCompany": "most recent company or null",
-  "summary": "professional summary in 2-3 sentences",
-  "skills": ["skill1", "skill2", "skill3"],
+  "name": "candidate full name - look at the TOP of the CV for the largest/boldest name",
+  "email": "primary email address",
+  "phone": "primary phone number",
+  "secondaryPhone": "secondary phone number or null",
+  "location": "full address",
+  "linkedinUrl": null,
+  "githubUrl": null,
+  "portfolioUrl": null,
+  "totalYearsExperience": 0,
+  "currentRole": "most recent job title",
+  "currentCompany": "most recent employer",
+  "summary": "career objective or professional summary",
+  "skills": ["skill1", "skill2"],
   "experience": [
     {
-      "company": "company name",
+      "company": "employer name",
       "role": "job title",
-      "startDate": "YYYY-MM or null",
-      "endDate": "YYYY-MM or present",
-      "tenureMonths": number,
-      "description": "brief description"
+      "startDate": "Month Year",
+      "endDate": "Month Year or Present",
+      "tenureMonths": 12,
+      "description": "responsibilities"
     }
   ],
   "education": [
     {
-      "degree": "degree name",
-      "institution": "university/college name",
-      "year": number or null,
-      "level": "HIGH_SCHOOL or BACHELOR or MASTER or PHD or OTHER"
+      "degree": "degree title e.g. Masters in Mathematics",
+      "institution": "university or college name",
+      "year": 2023,
+      "result": "CGPA or GPA",
+      "level": "MASTER or BACHELOR or HIGH_SCHOOL"
     }
   ],
-  "certifications": ["cert1", "cert2"],
-  "languages": ["English", "Bangla"],
-  "achievements": ["achievement1", "achievement2"]
+  "certifications": [],
+  "languages": ["Bangla", "English"],
+  "achievements": ["achievement1"],
+  "personalDetails": {
+    "fatherName": null,
+    "motherName": null,
+    "dateOfBirth": null,
+    "gender": null,
+    "nationality": null,
+    "religion": null,
+    "maritalStatus": null,
+    "nationalId": null
+  }
 }`
             }
           ]

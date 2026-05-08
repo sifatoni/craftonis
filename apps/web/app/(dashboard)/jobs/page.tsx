@@ -147,7 +147,7 @@ function CandidateDetailPanel({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.2 }}
-      className="w-96 flex-shrink-0 rounded-xl border overflow-y-auto"
+      className="w-80 flex-shrink-0 rounded-xl border overflow-y-auto overflow-x-hidden"
       style={{ background: '#111111', borderColor: '#1A1A1A', maxHeight: 'calc(100vh - 160px)' }}
     >
       {/* Header */}
@@ -186,7 +186,7 @@ function CandidateDetailPanel({
             {candidate.name?.charAt(0)?.toUpperCase()}
           </div>
           <div>
-            <h2 className="text-base font-bold" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>
+            <h2 className="text-base font-bold break-words" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)', wordBreak: 'break-word' }}>
               {candidate.name}
             </h2>
             <div
@@ -202,27 +202,35 @@ function CandidateDetailPanel({
         {/* Contact Info */}
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Contact</p>
-          {[
-            { icon: Mail, label: candidate.email },
-            { icon: Phone, label: candidate.phone || 'Not provided' },
-          ].map((item, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <item.icon size={13} style={{ color: '#A50000', flexShrink: 0 }} />
-              <span className="text-sm" style={{ color: candidate.phone || i === 0 ? '#A0A0A0' : '#3D3D3D' }}>
-                {item.label}
-              </span>
+          {candidate.email && (
+            <div className="flex items-start gap-2">
+              <Mail size={13} style={{ color: '#A50000', flexShrink: 0, marginTop: 2 }} />
+              <span className="text-sm break-all" style={{ color: '#A0A0A0' }}>{candidate.email}</span>
             </div>
-          ))}
+          )}
+          {(candidate.phone || parsedData?.phone) && (
+            <div className="flex items-center gap-2">
+              <Phone size={13} style={{ color: '#A50000', flexShrink: 0 }} />
+              <span className="text-sm" style={{ color: '#A0A0A0' }}>{candidate.phone || parsedData?.phone}</span>
+            </div>
+          )}
+          {parsedData?.secondaryPhone && (
+            <div className="flex items-center gap-2">
+              <Phone size={13} style={{ color: '#606060', flexShrink: 0 }} />
+              <span className="text-sm" style={{ color: '#A0A0A0' }}>{parsedData.secondaryPhone}</span>
+            </div>
+          )}
+          {parsedData?.location && (
+            <div className="flex items-start gap-2">
+              <ExternalLink size={13} style={{ color: '#A50000', flexShrink: 0, marginTop: 2 }} />
+              <span className="text-sm" style={{ color: '#A0A0A0' }}>{parsedData.location}</span>
+            </div>
+          )}
           {parsedData?.linkedinUrl && (
             <div className="flex items-center gap-2">
               <ExternalLink size={13} style={{ color: '#A50000', flexShrink: 0 }} />
-              <a
-                href={parsedData.linkedinUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm hover:underline"
-                style={{ color: '#0284C7' }}
-              >
+              <a href={parsedData.linkedinUrl} target="_blank" rel="noreferrer"
+                className="text-sm hover:underline" style={{ color: '#0284C7' }}>
                 LinkedIn Profile
               </a>
             </div>
@@ -285,8 +293,11 @@ function CandidateDetailPanel({
               {parsedData.education.map((edu: any, i: number) => (
                 <div key={i} className="pl-3 border-l-2" style={{ borderColor: '#2E2E2E' }}>
                   <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>{edu.degree}</p>
-                  <p className="text-xs" style={{ color: '#A0A0A0' }}>{edu.institution}</p>
-                  {edu.year && <p className="text-xs" style={{ color: '#606060' }}>{edu.year}</p>}
+                  <p className="text-xs mt-0.5" style={{ color: '#A50000' }}>{edu.institution}</p>
+                  <div className="flex gap-3 mt-0.5">
+                    {edu.year && <p className="text-xs" style={{ color: '#606060' }}>{edu.year}</p>}
+                    {edu.result && <p className="text-xs" style={{ color: '#16A34A' }}>{edu.result}</p>}
+                  </div>
                 </div>
               ))}
             </div>
@@ -331,6 +342,27 @@ function CandidateDetailPanel({
                 <span key={i} className="text-xs px-2 py-1 rounded-lg" style={{ background: '#1A1A1A', color: '#A0A0A0' }}>
                   {lang}
                 </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Personal Details */}
+        {parsedData?.personalDetails && Object.values(parsedData.personalDetails).some(v => v) && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Personal Details</p>
+            <div className="space-y-1.5">
+              {[
+                { label: 'Date of Birth', value: parsedData.personalDetails?.dateOfBirth },
+                { label: 'Gender', value: parsedData.personalDetails?.gender },
+                { label: 'Nationality', value: parsedData.personalDetails?.nationality },
+                { label: 'Marital Status', value: parsedData.personalDetails?.maritalStatus },
+                { label: 'Religion', value: parsedData.personalDetails?.religion },
+              ].filter(item => item.value && item.value !== 'null').map((item, i) => (
+                <div key={i} className="flex justify-between">
+                  <span className="text-xs" style={{ color: '#606060' }}>{item.label}</span>
+                  <span className="text-xs" style={{ color: '#A0A0A0' }}>{item.value}</span>
+                </div>
               ))}
             </div>
           </div>
@@ -1151,7 +1183,7 @@ export default function JobsPage() {
     : candidates
 
   return (
-    <div className="flex gap-6 h-full animate-fade-in" style={{ minHeight: 'calc(100vh - 120px)' }}>
+    <div className="flex gap-4 h-full animate-fade-in overflow-hidden" style={{ minHeight: 'calc(100vh - 120px)' }}>
 
       {/* Left — Job List */}
       <div className="w-72 flex flex-col flex-shrink-0">
