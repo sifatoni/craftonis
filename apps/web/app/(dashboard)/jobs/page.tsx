@@ -6,10 +6,13 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import {
-  Upload, Plus, Search, Briefcase, Users, Clock,
+  Plus, Search, Briefcase, Users, Clock,
   ChevronRight, X, Loader2, User,
   ArrowRight, CheckCircle2, Circle,
+  FileText, FileSpreadsheet, UserPlus,
+  Upload, Download,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -421,75 +424,499 @@ function AddCandidateModal({
 }: {
   open: boolean; onClose: () => void; jobId: string
 }) {
+  const [mode, setMode] = useState<'select' | 'cv' | 'excel' | 'manual'>('select')
+  const [cvFiles, setCvFiles] = useState<File[]>([])
+  const [excelFile, setExcelFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [results, setResults] = useState<any>(null)
+  const cvInputRef = useRef<HTMLInputElement>(null)
+  const excelInputRef = useRef<HTMLInputElement>(null)
+  const qc = useQueryClient()
   const createCandidate = useCreateCandidate()
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm({
     resolver: zodResolver(createCandidateSchema),
   })
 
-  const onSubmit = async (data: any) => {
-    await createCandidate.mutateAsync({ ...data, jobId })
+  const handleClose = () => {
+    setMode('select')
+    setCvFiles([])
+    setExcelFile(null)
+    setResults(null)
     reset()
     onClose()
   }
 
+  const handleCvSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    const pdfs = files.filter((f) => f.type === 'application/pdf')
+    if (pdfs.length !== files.length) toast.warning('Only PDF files are accepted. Non-PDFs were skipped.')
+    setCvFiles(pdfs)
+  }
+
+  const handleCvUpload = async () => {
+    if (!cvFiles.length) return
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      cvFiles.forEach((file) => formData.append('files', file))
+      const token = localStorage.getItem('craftonis_access_token')
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/cv/bulk-parse/${jobId}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Upload failed')
+      setResults(data)
+      qc.invalidateQueries({ queryKey: ['candidates', jobId] })
+      toast.success(`${data.summary.created} candidate(s) added from CV!`)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to upload CVs')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleDownloadTemplate = async () => {
+    const token = localStorage.getItem('craftonis_access_token')
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/candidates/template/excel`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    const blob = await res.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'craftonis-candidate-template.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success('Template downloaded!')
+  }
+
+  const handleExcelUpload = async () => {
+    if (!excelFile) return
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', excelFile)
+      const token = localStorage.getItem('craftonis_access_token')
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/jobs/${jobId}/import-excel`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
+      )
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Import failed')
+      setResults(data)
+      qc.invalidateQueries({ queryKey: ['candidates', jobId] })
+      toast.success(`${data.summary.created} candidate(s) imported from Excel!`)
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to import Excel')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const onManualSubmit = async (data: any) => {
+    await createCandidate.mutateAsync({ ...data, jobId })
+    reset()
+    handleClose()
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent
-        className="max-w-md"
+        className="max-w-lg"
         style={{ background: '#111111', border: '1px solid #2E2E2E' }}
       >
         <DialogHeader>
           <DialogTitle style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}>
-            Add Candidate
+            {mode === 'select' && 'Add Candidate'}
+            {mode === 'cv' && 'Add from CV'}
+            {mode === 'excel' && 'Add from Excel'}
+            {mode === 'manual' && 'Manual Entry'}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
-          {[
-            { id: 'name', label: 'FULL NAME *', placeholder: 'Arif Hassan' },
-            { id: 'email', label: 'EMAIL *', placeholder: 'arif@example.com' },
-            { id: 'phone', label: 'PHONE', placeholder: '+8801712345678' },
-          ].map((field) => (
-            <div key={field.id} className="space-y-1.5">
-              <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>
-                {field.label}
-              </Label>
-              <Input
-                {...register(field.id as any)}
-                placeholder={field.placeholder}
-                className="h-10"
-                style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF' }}
-              />
-              {(errors as any)[field.id] && (
-                <p className="text-xs" style={{ color: '#DC2626' }}>
-                  {(errors as any)[field.id]?.message}
-                </p>
-              )}
-            </div>
-          ))}
+        <AnimatePresence mode="wait">
 
-          <div className="flex gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="flex-1 h-10"
-              style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
+          {/* ── MODE SELECT ── */}
+          {mode === 'select' && (
+            <motion.div
+              key="select"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="space-y-3 mt-2"
             >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={createCandidate.isPending}
-              className="flex-1 h-10"
-              style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
+              {[
+                {
+                  mode: 'cv' as const,
+                  icon: FileText,
+                  title: 'From CV (PDF)',
+                  desc: 'Upload one or multiple CVs — AI auto-extracts name, contact, skills, experience',
+                  badge: 'Recommended',
+                  badgeColor: '#16A34A',
+                },
+                {
+                  mode: 'excel' as const,
+                  icon: FileSpreadsheet,
+                  title: 'From Excel',
+                  desc: 'Bulk import from spreadsheet. Include CV links for auto-parse.',
+                  badge: 'Bulk',
+                  badgeColor: '#0284C7',
+                },
+                {
+                  mode: 'manual' as const,
+                  icon: UserPlus,
+                  title: 'Manual Entry',
+                  desc: 'Fill in candidate details manually.',
+                  badge: null,
+                  badgeColor: '',
+                },
+              ].map((option) => (
+                <button
+                  key={option.mode}
+                  onClick={() => setMode(option.mode)}
+                  className="w-full flex items-start gap-4 p-4 rounded-xl border text-left transition-all hover:border-crimson"
+                  style={{ background: '#0A0A0A', borderColor: '#2E2E2E' }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: '#1A1A1A' }}
+                  >
+                    <option.icon size={20} style={{ color: '#A50000' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
+                        {option.title}
+                      </span>
+                      {option.badge && (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded-full font-medium"
+                          style={{ background: `${option.badgeColor}20`, color: option.badgeColor }}
+                        >
+                          {option.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs mt-1" style={{ color: '#606060' }}>
+                      {option.desc}
+                    </p>
+                  </div>
+                  <ChevronRight size={16} style={{ color: '#606060', flexShrink: 0, marginTop: 2 }} />
+                </button>
+              ))}
+            </motion.div>
+          )}
+
+          {/* ── FROM CV ── */}
+          {mode === 'cv' && !results && (
+            <motion.div
+              key="cv"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="space-y-4 mt-2"
             >
-              {createCandidate.isPending ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : 'Add Candidate'}
-            </Button>
-          </div>
-        </form>
+              <input
+                ref={cvInputRef}
+                type="file"
+                accept=".pdf"
+                multiple
+                className="hidden"
+                onChange={handleCvSelect}
+              />
+
+              <button
+                onClick={() => cvInputRef.current?.click()}
+                className="w-full h-36 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-colors"
+                style={{ borderColor: cvFiles.length ? '#A50000' : '#2E2E2E', background: '#0A0A0A' }}
+              >
+                {cvFiles.length === 0 ? (
+                  <>
+                    <Upload size={28} style={{ color: '#606060' }} />
+                    <div className="text-center">
+                      <p className="text-sm font-medium" style={{ color: '#A0A0A0' }}>
+                        Click to select PDF files
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: '#606060' }}>
+                        Multiple CVs supported — max 5MB each
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={28} style={{ color: '#A50000' }} />
+                    <div className="text-center">
+                      <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
+                        {cvFiles.length} PDF{cvFiles.length > 1 ? 's' : ''} selected
+                      </p>
+                      <p className="text-xs mt-1" style={{ color: '#606060' }}>
+                        Click to change selection
+                      </p>
+                    </div>
+                  </>
+                )}
+              </button>
+
+              {cvFiles.length > 0 && (
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {cvFiles.map((f, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                      style={{ background: '#1A1A1A' }}
+                    >
+                      <FileText size={12} style={{ color: '#A50000' }} />
+                      <span className="flex-1 truncate" style={{ color: '#A0A0A0' }}>{f.name}</span>
+                      <span style={{ color: '#606060' }}>{(f.size / 1024).toFixed(0)}KB</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-xs" style={{ color: '#606060' }}>
+                AI will automatically extract: Name, Email, Phone, LinkedIn, Skills, Experience, Education from each CV.
+              </p>
+
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  onClick={() => setMode('select')}
+                  variant="outline"
+                  className="flex-1 h-10"
+                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleCvUpload}
+                  disabled={!cvFiles.length || uploading}
+                  className="flex-1 h-10"
+                  style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
+                >
+                  {uploading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin" />
+                      Processing {cvFiles.length} CV{cvFiles.length > 1 ? 's' : ''}...
+                    </span>
+                  ) : (
+                    `Upload & Parse ${cvFiles.length > 0 ? `(${cvFiles.length})` : ''}`
+                  )}
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── FROM EXCEL ── */}
+          {mode === 'excel' && !results && (
+            <motion.div
+              key="excel"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="space-y-4 mt-2"
+            >
+              <input
+                ref={excelInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => setExcelFile(e.target.files?.[0] || null)}
+              />
+
+              {/* Download template */}
+              <button
+                onClick={handleDownloadTemplate}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors"
+                style={{ background: '#0A0A0A', borderColor: '#2E2E2E' }}
+              >
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#052E16' }}
+                >
+                  <Download size={16} style={{ color: '#16A34A' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
+                    Download Excel Template
+                  </p>
+                  <p className="text-xs" style={{ color: '#606060' }}>
+                    Fill this template and upload it back
+                  </p>
+                </div>
+              </button>
+
+              {/* Upload Excel */}
+              <button
+                onClick={() => excelInputRef.current?.click()}
+                className="w-full h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-colors"
+                style={{ borderColor: excelFile ? '#A50000' : '#2E2E2E', background: '#0A0A0A' }}
+              >
+                {excelFile ? (
+                  <>
+                    <CheckCircle2 size={24} style={{ color: '#A50000' }} />
+                    <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>{excelFile.name}</p>
+                    <p className="text-xs" style={{ color: '#606060' }}>Click to change file</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={24} style={{ color: '#606060' }} />
+                    <p className="text-sm" style={{ color: '#A0A0A0' }}>
+                      Upload filled Excel file (.xlsx)
+                    </p>
+                  </>
+                )}
+              </button>
+
+              <p className="text-xs" style={{ color: '#606060' }}>
+                Include CV links (Google Drive/Dropbox) in the template for automatic CV parsing.
+              </p>
+
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  onClick={() => setMode('select')}
+                  variant="outline"
+                  className="flex-1 h-10"
+                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
+                >
+                  Back
+                </Button>
+                <Button
+                  onClick={handleExcelUpload}
+                  disabled={!excelFile || uploading}
+                  className="flex-1 h-10"
+                  style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
+                >
+                  {uploading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 size={16} className="animate-spin" />
+                      Importing...
+                    </span>
+                  ) : 'Import Candidates'}
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ── MANUAL ── */}
+          {mode === 'manual' && (
+            <motion.div
+              key="manual"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+            >
+              <form onSubmit={handleSubmit(onManualSubmit)} className="space-y-4 mt-2">
+                {[
+                  { id: 'name', label: 'FULL NAME *', placeholder: 'Arif Hassan' },
+                  { id: 'email', label: 'EMAIL *', placeholder: 'arif@example.com' },
+                  { id: 'phone', label: 'PHONE', placeholder: '+8801712345678' },
+                ].map((field) => (
+                  <div key={field.id} className="space-y-1.5">
+                    <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>
+                      {field.label}
+                    </Label>
+                    <Input
+                      {...register(field.id as any)}
+                      placeholder={field.placeholder}
+                      className="h-10"
+                      style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF' }}
+                    />
+                    {(errors as any)[field.id] && (
+                      <p className="text-xs" style={{ color: '#DC2626' }}>
+                        {(errors as any)[field.id]?.message}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    type="button"
+                    onClick={() => setMode('select')}
+                    variant="outline"
+                    className="flex-1 h-10"
+                    style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={createCandidate.isPending}
+                    className="flex-1 h-10"
+                    style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
+                  >
+                    {createCandidate.isPending ? <Loader2 size={16} className="animate-spin" /> : 'Add Candidate'}
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          )}
+
+          {/* ── RESULTS ── */}
+          {results && (
+            <motion.div
+              key="results"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-4 mt-2"
+            >
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Total', value: results.summary.total, color: '#A0A0A0' },
+                  { label: 'Added', value: results.summary.created, color: '#16A34A' },
+                  { label: 'Failed', value: results.summary.failed, color: results.summary.failed > 0 ? '#DC2626' : '#606060' },
+                ].map((s) => (
+                  <div
+                    key={s.label}
+                    className="text-center p-3 rounded-xl"
+                    style={{ background: '#0A0A0A', border: '1px solid #1A1A1A' }}
+                  >
+                    <div className="text-2xl font-bold" style={{ color: s.color, fontFamily: 'var(--font-syne)' }}>
+                      {s.value}
+                    </div>
+                    <div className="text-xs mt-1" style={{ color: '#606060' }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Result list */}
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {results.results?.map((r: any, i: number) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                    style={{ background: '#0A0A0A' }}
+                  >
+                    {r.success ? (
+                      <CheckCircle2 size={12} style={{ color: '#16A34A' }} />
+                    ) : (
+                      <X size={12} style={{ color: '#DC2626' }} />
+                    )}
+                    <span className="flex-1 truncate" style={{ color: r.success ? '#FFFFFF' : '#606060' }}>
+                      {r.name || r.filename}
+                    </span>
+                    {!r.success && (
+                      <span style={{ color: '#DC2626' }}>{r.error}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <Button
+                onClick={handleClose}
+                className="w-full h-10"
+                style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
+              >
+                Done
+              </Button>
+            </motion.div>
+          )}
+
+        </AnimatePresence>
       </DialogContent>
     </Dialog>
   )
