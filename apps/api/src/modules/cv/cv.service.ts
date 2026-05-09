@@ -35,6 +35,7 @@ export class CvService {
   async parseCv(candidateId: string, tenantId: string, fileBuffer: Buffer) {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
+      include: { job: true },
     });
     if (!candidate) throw new NotFoundException('Candidate not found');
 
@@ -104,15 +105,25 @@ export class CvService {
 
     this.logger.log(`CV PARSE COMPLETE - CandidateID: ${candidateId} - Quality: ${extractedData.parsingMetadata?.confidenceScore}%`);
 
+    // Auto-score immediately after successful parse — failure is non-blocking
+    try {
+      await this.runScoringLogic(candidateId, extractedData, candidate.job as any);
+    } catch (scoreErr: unknown) {
+      this.logger.error(
+        `[CV_SCORE_FAILED] CandidateID: ${candidateId}, Error: ${scoreErr instanceof Error ? scoreErr.message : String(scoreErr)}`,
+      );
+      // Intentionally not re-throwing — parse succeeded, scoring is best-effort
+    }
+
     return {
       candidateId,
       extractedData,
       cvScoreId: cvScore.id,
-      message: 'CV parsed successfully. Run scoring to calculate scores.',
+      message: 'CV parsed and scored successfully.',
     };
   }
 
-  // ── Score CV ──────────────────────────────────────
+  // ── Score CV (public endpoint — delegates to shared logic) ───────────
   async scoreCv(tenantId: string, dto: ScoreCvDto) {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: dto.candidateId, tenantId },
@@ -124,10 +135,29 @@ export class CvService {
     }
 
     const parsedData = candidate.cvScore.parsedData as any;
-    const jobDescription = candidate.job?.description || '';
-    const jobRequirements = candidate.job?.requirements || '';
+    const scores = await this.runScoringLogic(dto.candidateId, parsedData, candidate.job as any);
 
-    // Default weights
+    return {
+      candidateId: dto.candidateId,
+      scores,
+      breakdown: {
+        skillMatchWeight: '50%',
+        stabilityWeight: '20%',
+        educationWeight: '30%',
+      },
+    };
+  }
+
+  // ── Internal Scoring Logic (reused by parseCv + scoreCv) ─────────────
+  private async runScoringLogic(
+    candidateId: string,
+    parsedData: any,
+    job: { description?: string; requirements?: string } | null,
+  ): Promise<{ skillMatch: number; stability: number; education: number; totalScore: number }> {
+    this.logger.log(`[CV_SCORE_START] CandidateID: ${candidateId}`);
+
+    const jobDescription = job?.description || '';
+    const jobRequirements = job?.requirements || '';
     const weights = { skillMatch: 0.5, stability: 0.2, education: 0.3 };
 
     // 1. Skill Match Score (50%)
@@ -152,7 +182,7 @@ export class CvService {
       education * weights.education;
 
     const cvScore = await this.prisma.cvScore.update({
-      where: { candidateId: dto.candidateId },
+      where: { candidateId },
       data: {
         skillMatch: Math.round(skillMatch * 100) / 100,
         stability: Math.round(stability * 100) / 100,
@@ -161,25 +191,21 @@ export class CvService {
       },
     });
 
-    // Update candidate total score
+    // Mirror totalScore onto the candidate row (drives leaderboard ordering)
     await this.prisma.candidate.update({
-      where: { id: dto.candidateId },
+      where: { id: candidateId },
       data: { totalScore: cvScore.totalScore },
     });
 
+    this.logger.log(
+      `[CV_SCORE_SUCCESS] CandidateID: ${candidateId}, skillMatch: ${cvScore.skillMatch}, stability: ${cvScore.stability}, education: ${cvScore.education}, totalScore: ${cvScore.totalScore}`,
+    );
+
     return {
-      candidateId: dto.candidateId,
-      scores: {
-        skillMatch: cvScore.skillMatch,
-        stability: cvScore.stability,
-        education: cvScore.education,
-        totalScore: cvScore.totalScore,
-      },
-      breakdown: {
-        skillMatchWeight: '50%',
-        stabilityWeight: '20%',
-        educationWeight: '30%',
-      },
+      skillMatch: cvScore.skillMatch,
+      stability: cvScore.stability,
+      education: cvScore.education,
+      totalScore: cvScore.totalScore,
     };
   }
 

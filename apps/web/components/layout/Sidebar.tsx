@@ -14,7 +14,7 @@ import {
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/leads', icon: Radar, label: 'Lead Generation' },
-  { href: '/jobs', icon: Briefcase, label: 'Jobs & Pipeline' },
+  { href: '/jobs', icon: Briefcase, label: 'Job Board' },
   { href: '/jobs-pipeline', icon: KanbanSquare, label: 'Pipeline Board' },
   { href: '/cv-scoring', icon: FileSearch, label: 'CV Scoring' },
   { href: '/interviews', icon: Code2, label: 'Interviews' },
