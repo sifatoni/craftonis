@@ -114,6 +114,7 @@ export class JobsService {
             skillMatch: true,
             stability: true,
             education: true,
+            parsedData: true,
           },
         },
       },

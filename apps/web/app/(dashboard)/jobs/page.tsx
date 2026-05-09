@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -161,9 +161,11 @@ function CandidateDetailPanel({
         { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
       )
       if (!res.ok) throw new Error('Re-parse failed')
+      const data = await res.json()
       toast.success('CV re-parsed successfully!')
-      qc.invalidateQueries({ queryKey: ['candidates'] })
-      onClose()
+      // Invalidate and refetch — don't close panel
+      await qc.invalidateQueries({ queryKey: ['candidates'] })
+      await qc.refetchQueries({ queryKey: ['candidates'] })
     } catch (err: any) {
       toast.error(err.message || 'Re-parse failed')
     } finally {
@@ -1140,8 +1142,21 @@ export default function JobsPage() {
   const { data: candidates, isLoading: candidatesLoading } = useCandidates(selectedJobId || '')
   const { data: pipelineStats } = usePipelineStats(selectedJobId || '')
   const updateStage = useUpdateCandidateStage()
-
   const selectedJob = jobs?.find((j: any) => j.id === selectedJobId)
+
+  // Sync selectedCandidate with latest data from candidates list
+  useEffect(() => {
+    if (selectedCandidate && candidates) {
+      const updated = candidates.find((c: any) => c.id === selectedCandidate.id)
+      if (updated) {
+        // Deep compare to avoid infinite loops if objects are technically different but data is same
+        // But for now, simple check is fine with React Query data
+        if (JSON.stringify(updated) !== JSON.stringify(selectedCandidate)) {
+          setSelectedCandidate(updated)
+        }
+      }
+    }
+  }, [candidates, selectedCandidate])
 
   const filteredCandidates = stageFilter
     ? candidates?.filter((c: any) => c.stage === stageFilter)

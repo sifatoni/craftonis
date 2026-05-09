@@ -229,17 +229,19 @@ export class CvService {
       location: aiData.location || basicInfo.location,
       linkedinUrl: aiData.linkedinUrl || basicInfo.linkedinUrl,
       summary: aiData.summary || basicInfo.summary,
-      // Rest from AI (or empty arrays if AI failed)
-      totalYearsExperience: aiData.totalYearsExperience || 0,
-      currentRole: aiData.currentRole || null,
-      currentCompany: aiData.currentCompany || null,
-      skills: aiData.skills || [],
-      experience: aiData.experience || [],
-      education: aiData.education || [],
+      // Use AI data if non-empty array, otherwise fall back to regex
+      skills: (aiData.skills && aiData.skills.length > 0) ? aiData.skills : basicInfo.skills,
+      experience: (aiData.experience && aiData.experience.length > 0) ? aiData.experience : basicInfo.experience,
+      education: (aiData.education && aiData.education.length > 0) ? aiData.education : basicInfo.education,
+      languages: (aiData.languages && aiData.languages.length > 0) ? aiData.languages : basicInfo.languages,
+      achievements: (aiData.achievements && aiData.achievements.length > 0) ? aiData.achievements : basicInfo.achievements,
       certifications: aiData.certifications || [],
-      languages: aiData.languages || [],
-      achievements: aiData.achievements || [],
-      personalDetails: aiData.personalDetails || {},
+      totalYearsExperience: aiData.totalYearsExperience || basicInfo.totalYearsExperience || 0,
+      currentRole: aiData.currentRole || basicInfo.currentRole || null,
+      currentCompany: aiData.currentCompany || basicInfo.currentCompany || null,
+      personalDetails: (aiData.personalDetails && Object.values(aiData.personalDetails).some(v => v)) 
+        ? aiData.personalDetails 
+        : basicInfo.personalDetails,
     };
   }
 
@@ -257,7 +259,7 @@ export class CvService {
           'X-Title': 'Craftonis CV Parser',
         },
         body: JSON.stringify({
-          model: 'openai/gpt-oss-120b:free',
+          model: 'google/gemma-4-31b-it:free',
           max_tokens: 1500,
           messages: [
             {
@@ -690,8 +692,11 @@ Return:
   private extractBasicInfoFromText(cvText: string): any {
     const lines = cvText.split('\n').map(l => l.trim()).filter(Boolean);
     
-    // Name — first non-empty line
-    const name = lines[0] || null;
+    // Name — first non-empty line that doesn't look like a title
+    const name = lines.find(line => 
+      line.length > 3 && 
+      !/curriculum|vitae|resume|cv|biodata/i.test(line)
+    ) || lines[0] || null;
     
     // Email
     const emailMatch = cvText.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
@@ -767,10 +772,26 @@ Return:
         const result = gradeMatch ? gradeMatch[0] : null;
         
         education.push({
-          degree: line.split(/\s{3,}|\t/)[0].trim(),
-          institution: '',
+        // Try to extract institution from the line
+        // Format: "Degree Subject Institution Result Year"
+        const parts = line.split(/\s{2,}|\t/).map((p: string) => p.trim()).filter(Boolean);
+        let institution = '';
+        let degree = parts[0] || line;
+        
+        // Look for known institution keywords
+        const instPart = parts.find((p: string) => 
+          /University|College|School|Institute|Academy/i.test(p)
+        );
+        if (instPart) institution = instPart;
+        
+        // Clean degree — remove subject if combined
+        const degreeClean = degree.replace(/\s+(Mathematics|Science|Arts|Commerce|Business|English|Bangla)\s*/i, ' ').trim();
+        
+        education.push({
+          degree: degreeClean,
+          institution,
           year,
-          result,
+          result: result ? result.replace('CGPA', 'CGPA:').replace('GPA', 'GPA:') : null,
           level,
         });
       });
@@ -795,12 +816,21 @@ Return:
     if (cvText.match(/Hindi/i)) languages.push('Hindi');
     
     // Personal details
-    const dobMatch = cvText.match(/Date of Birth[:\s]+([^\n]+)/i);
-    const genderMatch = cvText.match(/Gender[:\s]+([^\n]+)/i);
-    const nationalityMatch = cvText.match(/Nationality[:\s]+([^\n]+)/i);
-    const religionMatch = cvText.match(/Religion[:\s]+([^\n]+)/i);
-    const maritalMatch = cvText.match(/Marital Status[:\s]+([^\n]+)/i);
-    const nidMatch = cvText.match(/National ID No\.[:\s]+([^\n]+)/i);
+    // Personal details — match label followed by colon and value on same line or next line
+    const extractField = (label: string): string | null => {
+      // 1. Try multi-line table format: Label\n: Value
+      const multiLinePattern = new RegExp(label + '[ \\t]*\\n[ \\t]*:[ \\t]*([^\\n:]{2,100})', 'i');
+      const m1 = cvText.match(multiLinePattern);
+      if (m1 && m1[1].trim().length > 1) return m1[1].trim();
+
+      // 2. Try same line format: Label : Value
+      // We exclude colons and restrict to horizontal whitespace to stay on the same line
+      const sameLinePattern = new RegExp(label + '[ \\t]*[:\\-][ \\t]*([^\\n:]{2,100})', 'i');
+      const m2 = cvText.match(sameLinePattern);
+      if (m2 && m2[1].trim().length > 1) return m2[1].trim();
+
+      return null;
+    };
     
     return {
       name, email, phone, secondaryPhone, location, linkedinUrl, summary,
@@ -814,12 +844,12 @@ Return:
       certifications: [],
       achievements: [],
       personalDetails: {
-        dateOfBirth: dobMatch ? dobMatch[1].trim() : null,
-        gender: genderMatch ? genderMatch[1].trim() : null,
-        nationality: nationalityMatch ? nationalityMatch[1].trim() : null,
-        religion: religionMatch ? religionMatch[1].trim() : null,
-        maritalStatus: maritalMatch ? maritalMatch[1].trim() : null,
-        nationalId: nidMatch ? nidMatch[1].trim() : null,
+        dateOfBirth: extractField('Date of Birth'),
+        gender: extractField('Gender'),
+        nationality: extractField('Nationality'),
+        religion: extractField('Religion'),
+        maritalStatus: extractField('Marital Status'),
+        nationalId: extractField('National ID No.'),
       },
     };
   }
