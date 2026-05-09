@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useUiStore } from '@/store/ui.store'
 import {
-  LayoutDashboard, Radar, Briefcase, FileSearch,
+  LayoutDashboard, Radar, Briefcase, FileSearch, KanbanSquare,
   Code2, Video, FileText, Bot, Users, Settings, ChevronLeft,
 } from 'lucide-react'
 
@@ -15,7 +15,8 @@ const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/leads', icon: Radar, label: 'Lead Generation' },
   { href: '/jobs', icon: Briefcase, label: 'Jobs & Pipeline' },
-  { href: '/cv', icon: FileSearch, label: 'CV Scoring' },
+  { href: '/jobs-pipeline', icon: KanbanSquare, label: 'Pipeline Board' },
+  { href: '/cv-scoring', icon: FileSearch, label: 'CV Scoring' },
   { href: '/interviews', icon: Code2, label: 'Interviews' },
   { href: '/meetings', icon: Video, label: 'Meeting Ledger' },
   { href: '/minutes', icon: FileText, label: 'Meeting Minutes' },

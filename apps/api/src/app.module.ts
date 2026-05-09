@@ -9,6 +9,7 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { JobsModule } from './modules/jobs/jobs.module';
 import { CvModule } from './modules/cv/cv.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { DebugModule } from './modules/debug/debug.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
     JobsModule,
     CvModule,
     AnalyticsModule,
+    DebugModule, // ⚠️ TEMPORARY — remove before production
   ],
   controllers: [AppController],
   providers: [AppService],
