@@ -771,28 +771,21 @@ Return:
         const gradeMatch = line.match(/(?:CGPA|GPA)[:\s]*([\d.]+)/i);
         const result = gradeMatch ? gradeMatch[0] : null;
         
-        education.push({
         // Try to extract institution from the line
-        // Format: "Degree Subject Institution Result Year"
         const parts = line.split(/\s{2,}|\t/).map((p: string) => p.trim()).filter(Boolean);
         let institution = '';
         let degree = parts[0] || line;
         
-        // Look for known institution keywords
         const instPart = parts.find((p: string) => 
           /University|College|School|Institute|Academy/i.test(p)
         );
         if (instPart) institution = instPart;
         
-        // Clean degree — remove subject if combined
-        const degreeClean = degree.replace(/\s+(Mathematics|Science|Arts|Commerce|Business|English|Bangla)\s*/i, ' ').trim();
-        
         education.push({
-          degree: degreeClean,
-          institution,
-          year,
-          result: result ? result.replace('CGPA', 'CGPA:').replace('GPA', 'GPA:') : null,
-          level,
+          level: level as any,
+          degree: degree.substring(0, 100),
+          institution: institution || 'Unknown',
+          year: year || 0,
         });
       });
     }
@@ -843,14 +836,52 @@ Return:
       currentCompany: experience[0]?.company || null,
       certifications: [],
       achievements: [],
-      personalDetails: {
-        dateOfBirth: extractField('Date of Birth'),
-        gender: extractField('Gender'),
-        nationality: extractField('Nationality'),
-        religion: extractField('Religion'),
-        maritalStatus: extractField('Marital Status'),
-        nationalId: extractField('National ID No.'),
-      },
+    // Personal details
+    const personalDetails = {
+      dateOfBirth: extractField('Date of Birth'),
+      gender: extractField('Gender'),
+      nationality: extractField('Nationality'),
+      religion: extractField('Religion'),
+      maritalStatus: extractField('Marital Status'),
+      nationalId: extractField('National ID No.'),
+    };
+
+    // Special handler for parallel list format (common in some BD CVs)
+    // format: Label1\nLabel2\n: Value1\n: Value2
+    const personalSection = cvText.match(/Personal Details?:?\s*([\s\S]+?)(?=Reference|Education|Experience|Key Skills|Language|Declaration|$)/i);
+    if (personalSection) {
+      const sectionText = personalSection[1];
+      const pLines = sectionText.split('\n').map(l => l.trim()).filter(Boolean);
+      const labels = pLines.filter(l => !l.startsWith(':') && l.length < 40);
+      const values = pLines.filter(l => l.startsWith(':'));
+      
+      if (labels.length > 0 && values.length > 0) {
+        const getVal = (lbl: string) => {
+          const idx = labels.findIndex(l => l.toLowerCase().includes(lbl.toLowerCase()));
+          return idx !== -1 && values[idx] ? values[idx].replace(/^[:\s]*/, '').trim() : null;
+        };
+
+        if (!personalDetails.dateOfBirth) personalDetails.dateOfBirth = getVal('Date of Birth');
+        if (!personalDetails.gender) personalDetails.gender = getVal('Gender');
+        if (!personalDetails.nationality) personalDetails.nationality = getVal('Nationality');
+        if (!personalDetails.religion) personalDetails.religion = getVal('Religion');
+        if (!personalDetails.maritalStatus) personalDetails.maritalStatus = getVal('Marital Status');
+        if (!personalDetails.nationalId) personalDetails.nationalId = getVal('National ID No.');
+      }
+    }
+
+    return {
+      name, email, phone, secondaryPhone, location, linkedinUrl, summary,
+      skills,
+      experience,
+      totalYearsExperience: experience.length > 0 ? Math.ceil(experience.reduce((acc, e) => acc + (e.tenureMonths || 0), 0) / 12) : 0,
+      education,
+      languages,
+      currentRole: experience[0]?.role || null,
+      currentCompany: experience[0]?.company || null,
+      certifications: [],
+      achievements: [],
+      personalDetails,
     };
   }
 }
