@@ -14,7 +14,14 @@ import {
   FileText, FileSpreadsheet, UserPlus,
   Upload, Download, Trash2, Mail, Phone,
   ExternalLink, Eye, RefreshCw, MapPin,
+  ChevronDown,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -127,10 +134,12 @@ function CandidateDetailPanel({
   candidate,
   onClose,
   onDelete,
+  updateStage,
 }: {
   candidate: any
   onClose: () => void
   onDelete: (id: string) => void
+  updateStage: any
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [reparsing, setReparsing] = useState(false)
@@ -211,9 +220,39 @@ function CandidateDetailPanel({
           <div className="min-w-0">
             <h2 className="text-base font-bold break-words" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)', wordBreak: 'break-word' }}>{candidate.name}</h2>
             {parsedData?.currentRole && <p className="text-xs mt-0.5" style={{ color: '#A50000' }}>{parsedData.currentRole}</p>}
-            <div className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full mt-1" style={{ background: `${stage?.color}15`, color: stage?.color }}>
-              <Circle size={5} fill={stage?.color} />{stage?.label}
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full mt-1 hover:opacity-80 transition-opacity"
+                  style={{ background: `${stage?.color}15`, color: stage?.color }}
+                >
+                  <Circle size={5} fill={stage?.color} />
+                  {stage?.label}
+                  <ChevronDown size={10} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                style={{ background: '#111111', border: '1px solid #2E2E2E' }}
+              >
+                {STAGES.filter(s => s.key !== 'REJECTED').map((s) => (
+                  <DropdownMenuItem
+                    key={s.key}
+                    onClick={() => {
+                      updateStage.mutate({ id: candidate.id, stage: s.key })
+                    }}
+                    className="cursor-pointer flex items-center gap-2"
+                    style={{ color: s.key === candidate.stage ? s.color : '#A0A0A0' }}
+                  >
+                    <Circle size={6} fill={s.key === candidate.stage ? s.color : 'transparent'} style={{ color: s.color }} />
+                    {s.label}
+                    {s.key === candidate.stage && (
+                      <span className="ml-auto text-xs" style={{ color: s.color }}>✓</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
@@ -1361,6 +1400,7 @@ export default function JobsPage() {
             candidate={selectedCandidate}
             onClose={() => setSelectedCandidate(null)}
             onDelete={() => setSelectedCandidate(null)}
+            updateStage={updateStage}
           />
         )}
       </AnimatePresence>

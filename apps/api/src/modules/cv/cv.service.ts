@@ -220,26 +220,28 @@ export class CvService {
       console.error('AI extraction failed, using regex only');
     }
 
-    // Merge: prefer AI data if not null, fall back to regex
+    // Merge: prefer AI data if not null and not mock, fall back to regex
+    const isAiMock = aiData.name === 'Candidate' || aiData.currentCompany === 'Tech Company';
+    
     return {
-      name: (aiData.name && aiData.name !== 'null') ? aiData.name : basicInfo.name,
-      email: (aiData.email && aiData.email?.includes('@')) ? aiData.email : basicInfo.email,
-      phone: (aiData.phone && aiData.phone !== 'null') ? aiData.phone : basicInfo.phone,
-      secondaryPhone: aiData.secondaryPhone || basicInfo.secondaryPhone,
-      location: aiData.location || basicInfo.location,
-      linkedinUrl: aiData.linkedinUrl || basicInfo.linkedinUrl,
-      summary: aiData.summary || basicInfo.summary,
-      // Use AI data if non-empty array, otherwise fall back to regex
-      skills: (aiData.skills && aiData.skills.length > 0) ? aiData.skills : basicInfo.skills,
-      experience: (aiData.experience && aiData.experience.length > 0) ? aiData.experience : basicInfo.experience,
-      education: (aiData.education && aiData.education.length > 0) ? aiData.education : basicInfo.education,
-      languages: (aiData.languages && aiData.languages.length > 0) ? aiData.languages : basicInfo.languages,
-      achievements: (aiData.achievements && aiData.achievements.length > 0) ? aiData.achievements : basicInfo.achievements,
-      certifications: aiData.certifications || [],
-      totalYearsExperience: aiData.totalYearsExperience || basicInfo.totalYearsExperience || 0,
-      currentRole: aiData.currentRole || basicInfo.currentRole || null,
-      currentCompany: aiData.currentCompany || basicInfo.currentCompany || null,
-      personalDetails: (aiData.personalDetails && Object.values(aiData.personalDetails).some(v => v)) 
+      name: (!isAiMock && aiData.name && aiData.name !== 'null') ? aiData.name : basicInfo.name,
+      email: (!isAiMock && aiData.email && aiData.email?.includes('@')) ? aiData.email : basicInfo.email,
+      phone: (!isAiMock && aiData.phone && aiData.phone !== 'null') ? aiData.phone : basicInfo.phone,
+      secondaryPhone: (!isAiMock ? aiData.secondaryPhone : null) || basicInfo.secondaryPhone,
+      location: (!isAiMock ? aiData.location : null) || basicInfo.location,
+      linkedinUrl: (!isAiMock ? aiData.linkedinUrl : null) || basicInfo.linkedinUrl,
+      summary: (!isAiMock ? aiData.summary : null) || basicInfo.summary,
+      // Use AI data if non-empty array and not mock, otherwise fall back to regex
+      skills: (!isAiMock && aiData.skills && aiData.skills.length > 0) ? aiData.skills : basicInfo.skills,
+      experience: (!isAiMock && aiData.experience && aiData.experience.length > 0) ? aiData.experience : basicInfo.experience,
+      education: (!isAiMock && aiData.education && aiData.education.length > 0) ? aiData.education : basicInfo.education,
+      languages: (!isAiMock && aiData.languages && aiData.languages.length > 0) ? aiData.languages : basicInfo.languages,
+      achievements: (!isAiMock && aiData.achievements && aiData.achievements.length > 0) ? aiData.achievements : basicInfo.achievements,
+      certifications: (!isAiMock ? aiData.certifications : []) || [],
+      totalYearsExperience: (!isAiMock ? aiData.totalYearsExperience : 0) || basicInfo.totalYearsExperience || 0,
+      currentRole: (!isAiMock ? aiData.currentRole : null) || basicInfo.currentRole || null,
+      currentCompany: (!isAiMock ? aiData.currentCompany : null) || basicInfo.currentCompany || null,
+      personalDetails: (!isAiMock && aiData.personalDetails && Object.values(aiData.personalDetails).some(v => v)) 
         ? aiData.personalDetails 
         : basicInfo.personalDetails,
     };
@@ -746,23 +748,76 @@ Return:
     
     // Experience — extract work experience blocks
     const experience: any[] = [];
-    const expSection = cvText.match(/Work Experience[:\s]*\n([\s\S]+?)(?:\nAcademic|\nEducation|\nKey Skills|\nLanguage|$)/i);
+    const expSection = cvText.match(/Work Experience[:\s]*\n([\s\S]+?)(?:\nAcademic|\nEducation|\nKey Skills|\nLanguage|\nPersonal|$)/i);
     if (expSection) {
       const expText = expSection[1];
-      // Match job entries: Title Company, Location (Date – Date)
-      const jobMatches = expText.matchAll(/([A-Z][^\n]+?)\s+([A-Z][^\n]+?(?:School|Company|Ltd|Inc|Corp|Institute|University|Bank|Group)[^\n]*)[,\s]+([A-Za-z, ]+)\s*\(([^)]+)\)/g);
-      for (const match of jobMatches) {
-        const dateRange = match[4];
-        const dates = dateRange.split('\u2013').map((d: string) => d.trim());
+      
+      // Strategy 1: Match "Role Company, Location (Date – Date)" on one line
+      const oneLineMatches = [...expText.matchAll(/^([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+|[A-Z][a-zA-Z\s]+?)\s+((?:[A-Z][^\n(,]+?(?:School|Company|Ltd|Inc|Corp|Institute|University|Bank|Group|International|National|Global|K\.G|KG)[^\n(,]*))(?:[,\s]+([A-Za-z,\s]+?))?\s*\(([^)]+)\)/gm)];
+      
+      for (const match of oneLineMatches) {
+        const dateRange = match[4] || '';
+        const dates = dateRange.split(/[–\-]/).map((d: string) => d.trim());
         experience.push({
           role: match[1].trim(),
           company: match[2].trim(),
-          location: match[3].trim(),
+          location: match[3]?.trim() || null,
           startDate: dates[0] || null,
           endDate: dates[1] || 'Present',
           tenureMonths: 0,
           description: '',
         });
+      }
+      
+      // Strategy 2: If no matches, try to parse bold/title lines
+      if (experience.length === 0) {
+        const lines = expText.split('\n').filter(l => l.trim());
+        let currentExp: any = null;
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          
+          // Check if line has a date range (indicates job entry)
+          const dateMatch = trimmed.match(/\(([A-Za-z]+ \d{4})\s*[–\-]\s*([A-Za-z]+ \d{4}|Present)\)/i);
+          if (dateMatch) {
+            // Extract company and role from this line
+            const beforeDate = trimmed.replace(dateMatch[0], '').trim();
+            // Split on comma to get location
+            const parts = beforeDate.split(',');
+            const companyPart = parts.slice(0, -1).join(',').trim();
+            const location = parts[parts.length - 1]?.trim();
+            
+            // Try to split role from company
+            // Match 2-3 word role titles before a proper company name
+            const roleCompanyMatch = companyPart.match(/^([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+|[A-Z][a-zA-Z]+)\s+((?:[A-Z][a-zA-Z&.]+\s*)*(?:School|Company|Ltd|Inc|Corp|Institute|University|Bank|Group|International|K\.G|K\.G\.|KG).*)/);
+            if (roleCompanyMatch) {
+              currentExp = {
+                role: roleCompanyMatch[1].trim(),
+                company: roleCompanyMatch[2].trim(),
+                location,
+                startDate: dateMatch[1],
+                endDate: dateMatch[2],
+                tenureMonths: 0,
+                description: '',
+              };
+            } else {
+              currentExp = {
+                role: companyPart,
+                company: '',
+                location,
+                startDate: dateMatch[1],
+                endDate: dateMatch[2],
+                tenureMonths: 0,
+                description: '',
+              };
+            }
+            experience.push(currentExp);
+          } else if (currentExp && trimmed.startsWith('•')) {
+            // Bullet point — add to description
+            currentExp.description += (currentExp.description ? ' ' : '') + trimmed.replace(/^•\s*/, '');
+          }
+        }
       }
     }
     
