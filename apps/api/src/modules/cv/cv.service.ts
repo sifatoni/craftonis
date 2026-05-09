@@ -638,15 +638,35 @@ Return:
       update: { parsedData: extractedData },
     })
 
-    // Update candidate basic info
+    // Update candidate with re-extracted data
+    const newName = extractedData.name && 
+      extractedData.name !== 'Candidate' && 
+      extractedData.name !== 'null' &&
+      extractedData.name.length > 1
+      ? extractedData.name 
+      : candidate.name
+
+    const newEmail = extractedData.email && 
+      extractedData.email.includes('@') && 
+      !extractedData.email.includes('null')
+      ? extractedData.email 
+      : candidate.email
+
+    const newPhone = extractedData.phone && 
+      extractedData.phone !== 'null'
+      ? extractedData.phone 
+      : candidate.phone || undefined
+
     await this.prisma.candidate.update({
       where: { id: candidateId },
       data: {
-        name: extractedData.name || candidate.name,
-        email: extractedData.email || candidate.email,
-        phone: extractedData.phone || candidate.phone || undefined,
+        name: newName,
+        email: newEmail,
+        phone: newPhone,
       },
     })
+
+    console.log('Re-parse complete. Name:', newName, 'Education count:', extractedData.education?.length)
 
     return { success: true, message: 'CV re-parsed successfully', extractedData }
   }
@@ -692,11 +712,12 @@ Return:
   private extractBasicInfoFromText(cvText: string): any {
     const lines = cvText.split('\n').map(l => l.trim()).filter(Boolean);
     
-    // Name — first non-empty line that doesn't look like a title
+    // Name — look for the first line that looks like a name (not a title or header)
     const name = lines.find(line => 
-      line.length > 3 && 
-      !/curriculum|vitae|resume|cv|biodata/i.test(line)
-    ) || lines[0] || null;
+      line.length > 5 && 
+      line.length < 50 &&
+      !/curriculum|vitae|resume|cv|biodata|objective|experience|education|personal|skills|proficiency|contact|mobile|email|address/i.test(line)
+    ) || lines[0] || 'Candidate';
     
     // Email
     const emailMatch = cvText.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
@@ -756,35 +777,36 @@ Return:
         'hsc': 'HIGH_SCHOOL', 'ssc': 'HIGH_SCHOOL', 'a level': 'HIGH_SCHOOL',
       };
       
-      eduLines.forEach(line => {
-        const lower = line.toLowerCase();
+      eduLines.forEach(eduLine => {
+        const lineIdx = lines.findIndex(l => l.includes(eduLine));
+        const lower = eduLine.toLowerCase();
         let level = 'OTHER';
         for (const [key, val] of Object.entries(degreeMap)) {
           if (lower.includes(key)) { level = val; break; }
         }
         
-        // Find year in line
-        const yearMatch = line.match(/\b(19|20)\d{2}\b/);
+        const yearMatch = eduLine.match(/\b(19|20)\d{2}\b/);
         const year = yearMatch ? parseInt(yearMatch[0]) : null;
         
-        // Find CGPA/GPA
-        const gradeMatch = line.match(/(?:CGPA|GPA)[:\s]*([\d.]+)/i);
-        const result = gradeMatch ? gradeMatch[0] : null;
-        
-        // Try to extract institution from the line
-        const parts = line.split(/\s{2,}|\t/).map((p: string) => p.trim()).filter(Boolean);
-        let institution = '';
-        let degree = parts[0] || line;
-        
-        const instPart = parts.find((p: string) => 
-          /University|College|School|Institute|Academy/i.test(p)
-        );
-        if (instPart) institution = instPart;
+        let institution = 'Unknown';
+        if (lineIdx !== -1) {
+          for (let j = 0; j <= 2; j++) {
+            const targetLine = lines[lineIdx + j];
+            if (targetLine && /University|College|School|Institute|Academy/i.test(targetLine)) {
+              if (targetLine.length < 15 && lines[lineIdx + j - 1] && lines[lineIdx + j - 1].length > 3) {
+                institution = lines[lineIdx + j - 1] + ' ' + targetLine;
+              } else {
+                institution = targetLine;
+              }
+              break;
+            }
+          }
+        }
         
         education.push({
           level: level as any,
-          degree: degree.substring(0, 100),
-          institution: institution || 'Unknown',
+          degree: eduLine.substring(0, 100),
+          institution,
           year: year || 0,
         });
       });
@@ -825,17 +847,6 @@ Return:
       return null;
     };
     
-    return {
-      name, email, phone, secondaryPhone, location, linkedinUrl, summary,
-      skills,
-      experience,
-      education,
-      languages,
-      totalYearsExperience: experience.length > 0 ? 1 : 0,
-      currentRole: experience[0]?.role || null,
-      currentCompany: experience[0]?.company || null,
-      certifications: [],
-      achievements: [],
     // Personal details
     const personalDetails = {
       dateOfBirth: extractField('Date of Birth'),
@@ -847,7 +858,6 @@ Return:
     };
 
     // Special handler for parallel list format (common in some BD CVs)
-    // format: Label1\nLabel2\n: Value1\n: Value2
     const personalSection = cvText.match(/Personal Details?:?\s*([\s\S]+?)(?=Reference|Education|Experience|Key Skills|Language|Declaration|$)/i);
     if (personalSection) {
       const sectionText = personalSection[1];

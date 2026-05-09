@@ -1144,19 +1144,13 @@ export default function JobsPage() {
   const updateStage = useUpdateCandidateStage()
   const selectedJob = jobs?.find((j: any) => j.id === selectedJobId)
 
-  // Sync selectedCandidate with latest data from candidates list
+  // Sync selectedCandidate with latest data after reparse
   useEffect(() => {
     if (selectedCandidate && candidates) {
       const updated = candidates.find((c: any) => c.id === selectedCandidate.id)
-      if (updated) {
-        // Deep compare to avoid infinite loops if objects are technically different but data is same
-        // But for now, simple check is fine with React Query data
-        if (JSON.stringify(updated) !== JSON.stringify(selectedCandidate)) {
-          setSelectedCandidate(updated)
-        }
-      }
+      if (updated) setSelectedCandidate(updated)
     }
-  }, [candidates, selectedCandidate])
+  }, [candidates])
 
   const filteredCandidates = stageFilter
     ? candidates?.filter((c: any) => c.stage === stageFilter)
