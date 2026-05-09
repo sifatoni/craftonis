@@ -229,6 +229,9 @@ export class CvService {
     });
     if (!job) throw new NotFoundException('Job not found');
 
+    const totalCandidates = await this.prisma.candidate.count({ where: { jobId, tenantId } });
+    const candidatesWithScore = await this.prisma.candidate.count({ where: { jobId, tenantId, totalScore: { gt: 0 } } });
+
     const candidates = await this.prisma.candidate.findMany({
       where: { jobId, tenantId, totalScore: { gt: 0 } },
       include: {
@@ -243,6 +246,8 @@ export class CvService {
       },
       orderBy: { totalScore: 'desc' },
     });
+
+    this.logger.debug(`Leaderboard Debug [JobID: ${jobId}]: Total Candidates: ${totalCandidates}, Scored Candidates: ${candidatesWithScore}, Final Leaderboard Count: ${candidates.length}`);
 
     return candidates.map((c, index) => ({
       rank: index + 1,
@@ -747,6 +752,10 @@ CV Text: ${cvText.substring(0, 3000)}`
   }> {
     const filename = file.originalname;
 
+    const job = await this.prisma.job.findFirst({
+      where: { id: jobId, tenantId },
+    });
+
     // 1. Extract PDF text
     const pdfParseLib = require('pdf-parse');
     const PDFParseClass = pdfParseLib.PDFParse || pdfParseLib.default?.PDFParse;
@@ -794,6 +803,15 @@ CV Text: ${cvText.substring(0, 3000)}`
         },
         update: { parsedData: extractedData },
       });
+
+      try {
+        this.logger.log(`[BULK_CV_SCORE_START] CandidateID: ${existing.id}`);
+        await this.runScoringLogic(existing.id, extractedData, job as any);
+        this.logger.log(`[BULK_CV_SCORE_SUCCESS] CandidateID: ${existing.id}`);
+      } catch (err: unknown) {
+        this.logger.error(`[BULK_CV_SCORE_FAILED] CandidateID: ${existing.id}, Error: ${err instanceof Error ? err.message : String(err)}`);
+      }
+
       return { filename, success: true, candidateId: existing.id, name, action: 'updated' };
     }
 
@@ -823,6 +841,14 @@ CV Text: ${cvText.substring(0, 3000)}`
         totalScore: 0,
       },
     });
+
+    try {
+      this.logger.log(`[BULK_CV_SCORE_START] CandidateID: ${candidate.id}`);
+      await this.runScoringLogic(candidate.id, extractedData, job as any);
+      this.logger.log(`[BULK_CV_SCORE_SUCCESS] CandidateID: ${candidate.id}`);
+    } catch (err: unknown) {
+      this.logger.error(`[BULK_CV_SCORE_FAILED] CandidateID: ${candidate.id}, Error: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     return { filename, success: true, candidateId: candidate.id, name, action: 'created' };
   }
