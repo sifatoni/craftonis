@@ -5,11 +5,11 @@ import { InterviewType } from '@prisma/client'
 export class CreateInterviewDto {
   @ApiProperty()
   @IsUUID()
-  candidateId: string
+  candidateId!: string
 
   @ApiProperty({ enum: InterviewType })
   @IsEnum(InterviewType)
-  type: InterviewType
+  type!: InterviewType
 
   @ApiPropertyOptional()
   @IsOptional()

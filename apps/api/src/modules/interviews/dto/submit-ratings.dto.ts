@@ -1,4 +1,4 @@
-import { IsObject, IsOptional, IsString, IsNumber, Min, Max } from 'class-validator'
+import { IsObject, IsOptional, IsString } from 'class-validator'
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger'
 
 export class SubmitRatingsDto {
@@ -9,10 +9,10 @@ export class SubmitRatingsDto {
       culturalFit: 9,
       technicalSkill: 8,
       problemSolving: 7,
-    }
+    },
   })
   @IsObject()
-  ratings: Record<string, number>
+  ratings!: Record<string, number>
 
   @ApiPropertyOptional()
   @IsOptional()
