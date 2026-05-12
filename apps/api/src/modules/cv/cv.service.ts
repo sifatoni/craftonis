@@ -967,11 +967,53 @@ CV Text: ${cvText.substring(0, 3000)}`
             const parts = beforeDate.split(',');
             const companyPart = parts.slice(0, -1).join(',').trim();
             const loc = parts[parts.length - 1]?.trim();
-            const roleCompanyMatch = companyPart.match(/^([A-Z][a-zA-Z]+\s[A-Z][a-zA-Z]+|[A-Z][a-zA-Z]+)\s+((?:[A-Z][a-zA-Z&.]+\s*)*(?:School|Company|Ltd|Inc|Corp|Institute|University|Bank|Group|International|K\.G|K\.G\.|KG).*)/);
-            if (roleCompanyMatch) {
-              currentExp = { role: roleCompanyMatch[1].trim(), company: roleCompanyMatch[2].trim(), location: loc, startDate: dateMatch[1], endDate: dateMatch[2], tenureMonths: 0, description: '' };
+            // Strategy: Find role title (1-3 words) before company name
+            // "Junior Teacher Deen K.G & Deen International School..."
+            // Role = words before the company proper noun
+            let role = companyPart
+            let company = ''
+            
+            // Try to identify role vs company
+            // Company usually contains: School, Ltd, Inc, Corp, Institute, University, Bank, Group, K.G, International
+            const companyKeywords = /School|Company|Ltd|Inc|Corp|Institute|University|Bank|Group|International|K\.G|KG|Hospital|Clinic|Academy|College/i
+            
+            // Split on first occurrence of company keyword context
+            const wordParts = companyPart.split(/\s+/)
+            let companyStartIdx = -1
+            
+            for (let wi = 0; wi < wordParts.length; wi++) {
+              // Check if current + next words contain company keyword
+              const remaining = wordParts.slice(wi).join(' ')
+              if (companyKeywords.test(remaining) && wi > 0) {
+                // Check if this word or next word triggers company keyword
+                if (companyKeywords.test(wordParts[wi]) || 
+                    (wordParts[wi + 1] && companyKeywords.test(wordParts[wi + 1]))) {
+                  companyStartIdx = wi
+                  break
+                }
+              }
+            }
+            
+            if (companyStartIdx > 0) {
+              role = wordParts.slice(0, companyStartIdx).join(' ')
+              company = wordParts.slice(companyStartIdx).join(' ')
             } else {
-              currentExp = { role: companyPart, company: '', location: loc, startDate: dateMatch[1], endDate: dateMatch[2], tenureMonths: 0, description: '' };
+              // Fallback: first 2 capitalized words = role
+              const roleMatch = companyPart.match(/^([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s+(.+)$/)
+              if (roleMatch) {
+                role = roleMatch[1]
+                company = roleMatch[2]
+              }
+            }
+            
+            currentExp = {
+              role: role.trim(),
+              company: company.trim() || companyPart,
+              location: loc,
+              startDate: dateMatch[1],
+              endDate: dateMatch[2],
+              tenureMonths: 0,
+              description: '',
             }
             experience.push(currentExp);
           } else if (currentExp && trimmed.startsWith('•')) {

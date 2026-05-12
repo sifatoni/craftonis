@@ -456,6 +456,8 @@ function CandidateCard({
       if (!response.ok) { const err = await response.json(); throw new Error(err.message || 'Upload failed') }
       toast.success('CV uploaded and parsed successfully!')
       qc.invalidateQueries({ queryKey: ['candidates'] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      qc.invalidateQueries({ queryKey: ['pipeline-stats'] })
     } catch (err: any) {
       toast.error(err.message || 'Failed to upload CV')
     } finally {
@@ -714,7 +716,9 @@ function AddCandidateModal({
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Upload failed')
       setResults(data)
-      qc.invalidateQueries({ queryKey: ['candidates', jobId] })
+      qc.invalidateQueries({ queryKey: ['candidates'] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      qc.invalidateQueries({ queryKey: ['pipeline-stats'] })
       toast.success(`${data.summary.created} candidate(s) added from CV!`)
     } catch (err: any) {
       toast.error(err.message || 'Failed to upload CVs')
@@ -753,7 +757,9 @@ function AddCandidateModal({
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Import failed')
       setResults(data)
-      qc.invalidateQueries({ queryKey: ['candidates', jobId] })
+      qc.invalidateQueries({ queryKey: ['candidates'] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      qc.invalidateQueries({ queryKey: ['pipeline-stats'] })
       toast.success(`${data.summary.created} candidate(s) imported from Excel!`)
     } catch (err: any) {
       toast.error(err.message || 'Failed to import Excel')
@@ -1187,7 +1193,12 @@ export default function JobsPage() {
   useEffect(() => {
     if (selectedCandidate && candidates) {
       const updated = candidates.find((c: any) => c.id === selectedCandidate.id)
-      if (updated) setSelectedCandidate(updated)
+      if (updated) {
+        setSelectedCandidate(updated)
+      } else if (candidates.length > 0) {
+        // Candidate was deleted — close panel
+        setSelectedCandidate(null)
+      }
     }
   }, [candidates])
 
