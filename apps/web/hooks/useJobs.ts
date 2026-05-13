@@ -47,6 +47,35 @@ export function useCreateJob() {
   })
 }
 
+export function useUpdateJob() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: string; [key: string]: any }) =>
+      api.put(`/jobs/${id}`, data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      toast.success('Job updated!')
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to update job')
+    },
+  })
+}
+
+export function useDeleteJob() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/jobs/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      toast.success('Job deleted')
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to delete job')
+    },
+  })
+}
+
 export function useUpdateCandidateStage() {
   const qc = useQueryClient()
   return useMutation({

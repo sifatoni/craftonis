@@ -7,6 +7,11 @@ export class CreateInterviewDto {
   @IsUUID()
   candidateId!: string
 
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUUID()
+  jobId?: string
+
   @ApiProperty({ enum: InterviewType })
   @IsEnum(InterviewType)
   type!: InterviewType

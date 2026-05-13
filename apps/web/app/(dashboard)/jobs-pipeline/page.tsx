@@ -15,6 +15,7 @@ import {
   usePipelineColumns, usePipelineStats, useMoveCandidate,
   type PipelineCandidate, type StageKey,
 } from '@/hooks/usePipeline'
+import { ScheduleInterviewModal } from '@/components/interviews/ScheduleInterviewModal'
 
 // ── Score Badge ──────────────────────────────────
 function ScoreBadge({ score }: { score: number }) {
@@ -145,10 +146,11 @@ function KanbanColumn({ stage, cards, onView, dragStart, onDrop }: {
 }
 
 // ── Candidate Detail Modal ───────────────────────
-function CandidateModal({ c, onClose, onStage }: {
+function CandidateModal({ c, onClose, onStage, onSchedule }: {
   c: PipelineCandidate
   onClose: () => void
   onStage: (id: string, stage: string) => void
+  onSchedule: (c: PipelineCandidate) => void
 }) {
   const parsed = c.cvScore?.parsedData as any
 
@@ -262,7 +264,7 @@ function CandidateModal({ c, onClose, onStage }: {
               <button onClick={() => { onStage(c.id, 'REJECTED'); onClose() }} className="text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors hover:opacity-80" style={{ background: '#1A0000', color: '#EF4444' }}><UserX size={13} />Reject</button>
             )}
             {c.stage !== 'INTERVIEW' && c.stage !== 'HIRED' && c.stage !== 'REJECTED' && (
-              <button onClick={() => { onStage(c.id, 'INTERVIEW'); onClose() }} className="text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors hover:opacity-80" style={{ background: '#0C1A2E', color: '#8B5CF6' }}><Calendar size={13} />Schedule Interview</button>
+              <button onClick={() => { onStage(c.id, 'INTERVIEW'); onSchedule(c); onClose() }} className="text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors hover:opacity-80" style={{ background: '#0C1A2E', color: '#8B5CF6' }}><Calendar size={13} />Schedule Interview</button>
             )}
             <a href="/cv-scoring" className="text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 transition-colors hover:opacity-80" style={{ background: '#111', color: '#0284C7', border: '1px solid #1A1A1A' }}><FileSearch size={13} />CV Scoring</a>
           </div>
@@ -276,6 +278,7 @@ function CandidateModal({ c, onClose, onStage }: {
 export default function JobsPipelinePage() {
   const [selectedJobId, setSelectedJobId] = useState('')
   const [selectedCandidate, setSelectedCandidate] = useState<PipelineCandidate | null>(null)
+  const [scheduleCandidate, setScheduleCandidate] = useState<PipelineCandidate | null>(null)
   const [jobDropdownOpen, setJobDropdownOpen] = useState(false)
   const draggedRef = useRef<PipelineCandidate | null>(null)
 
@@ -298,6 +301,7 @@ export default function JobsPipelinePage() {
     const c = draggedRef.current
     if (!c || c.stage === targetStage) return
     moveCandidate.mutate({ id: c.id, stage: targetStage })
+    if (targetStage === 'INTERVIEW') setScheduleCandidate(c)
     draggedRef.current = null
   }, [moveCandidate])
 
@@ -395,9 +399,18 @@ export default function JobsPipelinePage() {
             c={selectedCandidate}
             onClose={() => setSelectedCandidate(null)}
             onStage={handleStageAction}
+            onSchedule={setScheduleCandidate}
           />
         )}
       </AnimatePresence>
+
+      <ScheduleInterviewModal
+        open={!!scheduleCandidate}
+        onClose={() => setScheduleCandidate(null)}
+        preselectedCandidateId={scheduleCandidate?.id}
+        preselectedCandidateName={scheduleCandidate?.name}
+        lockCandidate
+      />
     </div>
   )
 }

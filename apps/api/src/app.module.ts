@@ -11,6 +11,7 @@ import { CvModule } from './modules/cv/cv.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { DebugModule } from './modules/debug/debug.module';
 import { InterviewsModule } from './modules/interviews/interviews.module';
+import { QuestionsModule } from './modules/questions/questions.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { InterviewsModule } from './modules/interviews/interviews.module';
     AnalyticsModule,
     DebugModule, // ⚠️ TEMPORARY — remove before production
     InterviewsModule,
+    QuestionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

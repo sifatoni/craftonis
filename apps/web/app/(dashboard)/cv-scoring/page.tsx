@@ -6,10 +6,11 @@ import {
   FileSearch, Trophy, TrendingUp, Users, Clock,
   ChevronDown, X, Briefcase, GraduationCap,
   Shield, Star, Loader2, BarChart3, AlertCircle,
-  CheckCircle2, MapPin, Mail, Phone, Award
+  CheckCircle2, MapPin, Mail, Phone, Award, Calendar
 } from 'lucide-react'
 import { useJobsList, useLeaderboard, useScoreCard } from '@/hooks/useCvScoring'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
+import { ScheduleInterviewModal } from '@/components/interviews/ScheduleInterviewModal'
 
 // ── Score Badge (Reusable & Semantic) ───────────────────────────────────
 function ScoreBadge({ score, size = 'sm' }: { score: number | null | undefined; size?: 'sm' | 'lg' }) {
@@ -269,6 +270,7 @@ export default function CvScoringPage() {
   const [sortField, setSortField] = useState<string>('totalScore')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [jobDropdownOpen, setJobDropdownOpen] = useState(false)
+  const [scheduleCandidate, setScheduleCandidate] = useState<{ id: string; name: string } | null>(null)
 
   const { data: jobs, isLoading: jobsLoading } = useJobsList()
   const { data: leaderboard, isLoading: lbLoading } = useLeaderboard(selectedJobId)
@@ -569,12 +571,24 @@ export default function CvScoringPage() {
                               {entry.scores ? <ScoreBadge score={entry.scores.totalScore} size="lg" /> : <span className="text-muted-foreground">—</span>}
                             </td>
                             <td className="px-6 py-4 text-right whitespace-nowrap">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setSelectedCandidateId(entry.candidateId) }}
-                                className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2"
-                              >
-                                View
-                              </button>
+                              <div className="inline-flex items-center gap-2">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setSelectedCandidateId(entry.candidateId) }}
+                                  className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2"
+                                >
+                                  View
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setScheduleCandidate({ id: entry.candidateId, name: entry.name || 'Unnamed' })
+                                  }}
+                                  className="inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-4 py-2"
+                                >
+                                  <Calendar size={14} />
+                                  Set Interview
+                                </button>
+                              </div>
                             </td>
                           </motion.tr>
                         )
@@ -623,6 +637,14 @@ export default function CvScoringPage() {
           </div>
         )}
       </AnimatePresence>
+
+      <ScheduleInterviewModal
+        open={!!scheduleCandidate}
+        onClose={() => setScheduleCandidate(null)}
+        preselectedCandidateId={scheduleCandidate?.id}
+        preselectedCandidateName={scheduleCandidate?.name}
+        lockCandidate
+      />
     </div>
   )
 }

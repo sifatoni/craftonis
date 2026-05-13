@@ -1,11 +1,12 @@
 import {
-  Controller, Get, Post, Put, Body, Param,
+  Controller, Get, Post, Put, Patch, Body, Param,
   Query, UseGuards,
 } from '@nestjs/common'
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger'
 import { Role } from '@prisma/client'
 import { InterviewsService } from './interviews.service'
 import { CreateInterviewDto } from './dto/create-interview.dto'
+import { UpdateInterviewDto } from './dto/update-interview.dto'
 import { SubmitRatingsDto } from './dto/submit-ratings.dto'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { RolesGuard } from '../../common/guards/roles.guard'
@@ -49,6 +50,17 @@ export class InterviewsController {
   @ApiOperation({ summary: 'Schedule a new interview' })
   createInterview(@CurrentUser() user: any, @Body() dto: CreateInterviewDto) {
     return this.interviewsService.createInterview(user.tenantId, dto, user.id)
+  }
+
+  @Patch(':id')
+  @Roles(Role.SUPER_ADMIN, Role.HR_MANAGER, Role.INTERVIEWER)
+  @ApiOperation({ summary: 'Update a scheduled interview (type, scheduledAt, notes)' })
+  updateInterview(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() dto: UpdateInterviewDto,
+  ) {
+    return this.interviewsService.updateInterview(user.tenantId, id, dto)
   }
 
   @Put(':id/start')

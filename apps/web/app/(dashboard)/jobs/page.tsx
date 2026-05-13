@@ -10,11 +10,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Search, Briefcase, Users, Clock,
   ChevronRight, X, Loader2, User,
-  ArrowRight, CheckCircle2, Circle,
+  CheckCircle2, Circle,
   FileText, FileSpreadsheet, UserPlus,
   Upload, Download, Trash2, Mail, Phone,
   ExternalLink, Eye, RefreshCw, MapPin,
-  ChevronDown,
+  ChevronDown, MoreVertical, Pencil, CheckCheck,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -35,12 +35,15 @@ import {
 import {
   useJobs,
   useCreateJob,
+  useUpdateJob,
+  useDeleteJob,
   useCandidates,
   usePipelineStats,
   useUpdateCandidateStage,
   useCreateCandidate,
   useDeleteCandidate,
 } from '@/hooks/useJobs'
+import { ScheduleInterviewModal } from '@/components/interviews/ScheduleInterviewModal'
 
 // ── Constants ─────────────────────────────────────────────
 const STAGES = [
@@ -53,7 +56,7 @@ const STAGES = [
   { key: 'REJECTED',     label: 'Rejected',     color: '#374151' },
 ]
 
-const createJobSchema = z.object({
+const jobSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters'),
   description: z.string().optional(),
   requirements: z.string().optional(),
@@ -69,12 +72,17 @@ const createCandidateSchema = z.object({
 
 // ── Job Card ──────────────────────────────────────────────
 function JobCard({
-  job, isSelected, onClick,
+  job, isSelected, onClick, onEdit, onClose, onDelete,
 }: {
-  job: any; isSelected: boolean; onClick: () => void
+  job: any
+  isSelected: boolean
+  onClick: () => void
+  onEdit: (job: any) => void
+  onClose: (job: any) => void
+  onDelete: (job: any) => void
 }) {
   const statusColors: Record<string, string> = {
-    OPEN: '#16A34A', PAUSED: '#D97706', CLOSED: '#606060',
+    OPEN: '#16A34A', PAUSED: '#D97706', CLOSED: '#606060', DRAFT: '#3D3D3D',
   }
 
   return (
@@ -82,7 +90,7 @@ function JobCard({
       initial={{ opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       onClick={onClick}
-      className="p-4 rounded-xl border cursor-pointer transition-all"
+      className="group p-4 rounded-xl border cursor-pointer transition-all relative"
       style={{
         background: isSelected ? '#1A0000' : '#111111',
         borderColor: isSelected ? '#A50000' : '#1A1A1A',
@@ -90,37 +98,72 @@ function JobCard({
       }}
     >
       <div className="flex items-start justify-between mb-2">
-        <h3
-          className="text-sm font-semibold leading-tight"
-          style={{ color: '#FFFFFF' }}
-        >
+        <h3 className="text-sm font-semibold leading-tight pr-6" style={{ color: '#FFFFFF' }}>
           {job.title}
         </h3>
-        <div
-          className="w-2 h-2 rounded-full flex-shrink-0 mt-1"
-          style={{ background: statusColors[job.status] || '#606060' }}
-        />
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="w-2 h-2 rounded-full" style={{ background: statusColors[job.status] || '#606060' }} />
+
+          {/* Three-dot menu */}
+          <div
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={e => e.stopPropagation()}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="p-0.5 rounded hover:bg-white/10 transition-colors"
+                  style={{ color: '#606060' }}
+                >
+                  <MoreVertical size={14} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                style={{ background: '#111111', border: '1px solid #2E2E2E', minWidth: '170px' }}
+              >
+                <DropdownMenuItem
+                  onClick={() => onEdit(job)}
+                  className="cursor-pointer flex items-center gap-2 text-xs"
+                  style={{ color: '#A0A0A0' }}
+                >
+                  <Pencil size={12} style={{ color: '#0284C7' }} />
+                  Edit Job
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onClose(job)}
+                  className="cursor-pointer flex items-center gap-2 text-xs"
+                  style={{ color: '#A0A0A0' }}
+                >
+                  <CheckCheck size={12} style={{ color: '#16A34A' }} />
+                  Mark Hiring Completed
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => onDelete(job)}
+                  className="cursor-pointer flex items-center gap-2 text-xs"
+                  style={{ color: '#DC2626' }}
+                >
+                  <Trash2 size={12} />
+                  Delete Job
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 mt-2">
         <div className="flex items-center gap-1">
           <Users size={12} style={{ color: '#606060' }} />
-          <span className="text-xs" style={{ color: '#606060' }}>
-            {job.candidateCount ?? 0}
-          </span>
+          <span className="text-xs" style={{ color: '#606060' }}>{job.candidateCount ?? 0}</span>
         </div>
         <div className="flex items-center gap-1">
           <Clock size={12} style={{ color: '#606060' }} />
-          <span className="text-xs" style={{ color: '#606060' }}>
-            {job.daysOpen ?? 0}d
-          </span>
+          <span className="text-xs" style={{ color: '#606060' }}>{job.daysOpen ?? 0}d</span>
         </div>
         {job.department && (
-          <Badge
-            variant="outline"
-            className="text-xs px-1.5 py-0"
-            style={{ borderColor: '#2E2E2E', color: '#A0A0A0' }}
-          >
+          <Badge variant="outline" className="text-xs px-1.5 py-0"
+            style={{ borderColor: '#2E2E2E', color: '#A0A0A0' }}>
             {job.department.name}
           </Badge>
         )}
@@ -129,24 +172,163 @@ function JobCard({
   )
 }
 
+// ── Confirm Dialog ────────────────────────────────────────
+function ConfirmDialog({
+  open, onClose, onConfirm, title, body, confirmLabel, confirmStyle, loading,
+}: {
+  open: boolean
+  onClose: () => void
+  onConfirm: () => void
+  title: string
+  body: React.ReactNode
+  confirmLabel: string
+  confirmStyle?: React.CSSProperties
+  loading?: boolean
+}) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.8)' }}>
+      <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        className="rounded-xl p-6 w-full max-w-sm" style={{ background: '#111111', border: '1px solid #2E2E2E' }}>
+        <h3 className="text-base font-bold mb-2" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>
+          {title}
+        </h3>
+        <div className="text-sm mb-5" style={{ color: '#A0A0A0' }}>{body}</div>
+        <div className="flex gap-3">
+          <Button onClick={onClose} variant="outline" className="flex-1 h-9"
+            style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>
+            Cancel
+          </Button>
+          <Button onClick={onConfirm} disabled={loading} className="flex-1 h-9"
+            style={confirmStyle ?? { background: '#A50000', color: '#FFFFFF', border: 'none' }}>
+            {loading ? <Loader2 size={14} className="animate-spin" /> : confirmLabel}
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
+// ── Job Form Modal (Create & Edit) ────────────────────────
+function JobFormModal({
+  open, onClose, initial,
+}: {
+  open: boolean
+  onClose: () => void
+  initial?: any
+}) {
+  const isEdit = !!initial
+  const createJob = useCreateJob()
+  const updateJob = useUpdateJob()
+  const pending = isEdit ? updateJob.isPending : createJob.isPending
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm({
+    resolver: zodResolver(jobSchema),
+  })
+
+  useEffect(() => {
+    if (open) {
+      reset({
+        title: initial?.title ?? '',
+        description: initial?.description ?? '',
+        requirements: initial?.requirements ?? '',
+        salaryMin: initial?.salaryMin != null ? String(initial.salaryMin) : '',
+        salaryMax: initial?.salaryMax != null ? String(initial.salaryMax) : '',
+      })
+    }
+  }, [open, initial])
+
+  const onSubmit = async (data: any) => {
+    const payload = {
+      ...data,
+      salaryMin: data.salaryMin ? parseInt(data.salaryMin) : undefined,
+      salaryMax: data.salaryMax ? parseInt(data.salaryMax) : undefined,
+    }
+    if (isEdit) {
+      await updateJob.mutateAsync({ id: initial.id, ...payload })
+    } else {
+      await createJob.mutateAsync(payload)
+    }
+    onClose()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-lg" style={{ background: '#111111', border: '1px solid #2E2E2E' }}>
+        <DialogHeader>
+          <DialogTitle style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}>
+            {isEdit ? 'Edit Job' : 'Post New Job'}
+          </DialogTitle>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
+          {[
+            { id: 'title', label: 'JOB TITLE *', placeholder: 'e.g. Senior Frontend Engineer' },
+            { id: 'description', label: 'DESCRIPTION', placeholder: 'Job description...', textarea: true },
+            { id: 'requirements', label: 'REQUIREMENTS', placeholder: 'Required skills and experience...', textarea: true },
+          ].map(field => (
+            <div key={field.id} className="space-y-1.5">
+              <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>{field.label}</Label>
+              {field.textarea ? (
+                <textarea {...register(field.id as any)} placeholder={field.placeholder} rows={3}
+                  className="w-full rounded-lg px-3 py-2 text-sm resize-none"
+                  style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF', outline: 'none' }} />
+              ) : (
+                <Input {...register(field.id as any)} placeholder={field.placeholder} className="h-10"
+                  style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF' }} />
+              )}
+              {(errors as any)[field.id] && (
+                <p className="text-xs" style={{ color: '#DC2626' }}>{(errors as any)[field.id]?.message}</p>
+              )}
+            </div>
+          ))}
+
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { id: 'salaryMin', label: 'SALARY MIN', placeholder: '50000' },
+              { id: 'salaryMax', label: 'SALARY MAX', placeholder: '80000' },
+            ].map(field => (
+              <div key={field.id} className="space-y-1.5">
+                <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>{field.label}</Label>
+                <Input {...register(field.id as any)} placeholder={field.placeholder} type="number" className="h-10"
+                  style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF' }} />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1 h-10"
+              style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending} className="flex-1 h-10"
+              style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}>
+              {pending ? <Loader2 size={16} className="animate-spin" /> : isEdit ? 'Save Changes' : 'Post Job'}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Candidate Detail Panel ──────────────────────────────────
 function CandidateDetailPanel({
-  candidate,
-  onClose,
-  onDelete,
-  updateStage,
+  candidate, onClose, onDelete, updateStage, onScheduleInterview,
 }: {
   candidate: any
   onClose: () => void
   onDelete: (id: string) => void
   updateStage: any
+  onScheduleInterview: (candidate: any) => void
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [reparsing, setReparsing] = useState(false)
   const deleteCandidate = useDeleteCandidate()
   const qc = useQueryClient()
   const parsedData = candidate.cvScore?.parsedData as any
-  const stage = STAGES.find((s) => s.key === candidate.stage)
+  const stage = STAGES.find(s => s.key === candidate.stage)
 
   const handleDelete = async () => {
     await deleteCandidate.mutateAsync(candidate.id)
@@ -170,9 +352,7 @@ function CandidateDetailPanel({
         { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
       )
       if (!res.ok) throw new Error('Re-parse failed')
-      const data = await res.json()
       toast.success('CV re-parsed successfully!')
-      // Invalidate and refetch — don't close panel
       await qc.invalidateQueries({ queryKey: ['candidates'] })
       await qc.refetchQueries({ queryKey: ['candidates'] })
     } catch (err: any) {
@@ -181,9 +361,6 @@ function CandidateDetailPanel({
       setReparsing(false)
     }
   }
-
-  const handleEmailClick = (email: string) => { window.open(`mailto:${email}`, '_blank') }
-  const handleCallClick = (phone: string) => { window.open(`tel:${phone}`, '_blank') }
 
   return (
     <motion.div
@@ -194,61 +371,65 @@ function CandidateDetailPanel({
       className="w-80 flex-shrink-0 rounded-xl border overflow-y-auto overflow-x-hidden"
       style={{ background: '#111111', borderColor: '#1A1A1A', maxHeight: 'calc(100vh - 160px)' }}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b sticky top-0 z-10" style={{ background: '#111111', borderColor: '#1A1A1A' }}>
+      <div className="flex items-center justify-between p-4 border-b sticky top-0 z-10"
+        style={{ background: '#111111', borderColor: '#1A1A1A' }}>
         <h3 className="text-sm font-semibold" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>Candidate Profile</h3>
         <div className="flex items-center gap-1">
           {candidate.cvUrl && (
-            <button onClick={handleViewCv} title="View CV" className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#0284C7' }}><Eye size={14} /></button>
+            <button onClick={handleViewCv} title="View CV"
+              className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#0284C7' }}>
+              <Eye size={14} />
+            </button>
           )}
           {candidate.cvUrl && (
-            <button onClick={handleReparse} disabled={reparsing} title="Re-extract data from CV" className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#16A34A' }}>
+            <button onClick={handleReparse} disabled={reparsing} title="Re-extract data from CV"
+              className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#16A34A' }}>
               {reparsing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             </button>
           )}
-          <button onClick={() => setShowDeleteConfirm(true)} title="Remove candidate" className="p-1.5 rounded-lg transition-colors hover:bg-red-950" style={{ color: '#DC2626' }}><Trash2 size={14} /></button>
-          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#606060' }}><X size={14} /></button>
+          <button onClick={() => setShowDeleteConfirm(true)} title="Remove candidate"
+            className="p-1.5 rounded-lg transition-colors hover:bg-red-950" style={{ color: '#DC2626' }}>
+            <Trash2 size={14} />
+          </button>
+          <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-white/5" style={{ color: '#606060' }}>
+            <X size={14} />
+          </button>
         </div>
       </div>
 
       <div className="p-4 space-y-5">
-        {/* Avatar + Name */}
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0" style={{ background: '#1A0000', color: '#A50000' }}>
+          <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold flex-shrink-0"
+            style={{ background: '#1A0000', color: '#A50000' }}>
             {candidate.name?.charAt(0)?.toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="text-base font-bold break-words" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)', wordBreak: 'break-word' }}>{candidate.name}</h2>
+            <h2 className="text-base font-bold break-words"
+              style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)', wordBreak: 'break-word' }}>
+              {candidate.name}
+            </h2>
             {parsedData?.currentRole && <p className="text-xs mt-0.5" style={{ color: '#A50000' }}>{parsedData.currentRole}</p>}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
-                  className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full mt-1 hover:opacity-80 transition-opacity"
-                  style={{ background: `${stage?.color}15`, color: stage?.color }}
-                >
+                <button className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full mt-1 hover:opacity-80 transition-opacity"
+                  style={{ background: `${stage?.color}15`, color: stage?.color }}>
                   <Circle size={5} fill={stage?.color} />
                   {stage?.label}
                   <ChevronDown size={10} />
                 </button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                style={{ background: '#111111', border: '1px solid #2E2E2E' }}
-              >
-                {STAGES.filter(s => s.key !== 'REJECTED').map((s) => (
-                  <DropdownMenuItem
-                    key={s.key}
+              <DropdownMenuContent align="start" style={{ background: '#111111', border: '1px solid #2E2E2E' }}>
+                {STAGES.filter(s => s.key !== 'REJECTED').map(s => (
+                  <DropdownMenuItem key={s.key}
                     onClick={() => {
                       updateStage.mutate({ id: candidate.id, stage: s.key })
+                      if (s.key === 'INTERVIEW') onScheduleInterview(candidate)
                     }}
                     className="cursor-pointer flex items-center gap-2"
-                    style={{ color: s.key === candidate.stage ? s.color : '#A0A0A0' }}
-                  >
+                    style={{ color: s.key === candidate.stage ? s.color : '#A0A0A0' }}>
                     <Circle size={6} fill={s.key === candidate.stage ? s.color : 'transparent'} style={{ color: s.color }} />
                     {s.label}
-                    {s.key === candidate.stage && (
-                      <span className="ml-auto text-xs" style={{ color: s.color }}>✓</span>
-                    )}
+                    {s.key === candidate.stage && <span className="ml-auto text-xs" style={{ color: s.color }}>✓</span>}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
@@ -256,28 +437,26 @@ function CandidateDetailPanel({
           </div>
         </div>
 
-        {/* Contact Info */}
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Contact</p>
           {candidate.email && !candidate.email.includes('@pending.craftonis') && (
             <div className="flex items-center gap-2">
               <Mail size={13} style={{ color: '#A50000', flexShrink: 0 }} />
               <span className="text-sm break-all flex-1" style={{ color: '#A0A0A0', wordBreak: 'break-all' }}>{candidate.email}</span>
-              <button onClick={() => handleEmailClick(candidate.email)} title="Send email" className="p-1 rounded hover:bg-white/10 flex-shrink-0" style={{ color: '#0284C7' }}><ExternalLink size={12} /></button>
+              <button onClick={() => window.open(`mailto:${candidate.email}`, '_blank')}
+                className="p-1 rounded hover:bg-white/10 flex-shrink-0" style={{ color: '#0284C7' }}>
+                <ExternalLink size={12} />
+              </button>
             </div>
           )}
           {(candidate.phone || parsedData?.phone) && (
             <div className="flex items-center gap-2">
               <Phone size={13} style={{ color: '#A50000', flexShrink: 0 }} />
               <span className="text-sm flex-1" style={{ color: '#A0A0A0' }}>{candidate.phone || parsedData?.phone}</span>
-              <button onClick={() => handleCallClick(candidate.phone || parsedData?.phone)} title="Call" className="p-1 rounded hover:bg-white/10 flex-shrink-0" style={{ color: '#16A34A' }}><Phone size={12} /></button>
-            </div>
-          )}
-          {parsedData?.secondaryPhone && (
-            <div className="flex items-center gap-2">
-              <Phone size={13} style={{ color: '#606060', flexShrink: 0 }} />
-              <span className="text-sm flex-1" style={{ color: '#A0A0A0' }}>{parsedData.secondaryPhone}</span>
-              <button onClick={() => handleCallClick(parsedData.secondaryPhone)} title="Call secondary" className="p-1 rounded hover:bg-white/10 flex-shrink-0" style={{ color: '#16A34A' }}><Phone size={12} /></button>
+              <button onClick={() => window.open(`tel:${candidate.phone || parsedData?.phone}`, '_blank')}
+                className="p-1 rounded hover:bg-white/10 flex-shrink-0" style={{ color: '#16A34A' }}>
+                <Phone size={12} />
+              </button>
             </div>
           )}
           {parsedData?.location && (
@@ -289,12 +468,12 @@ function CandidateDetailPanel({
           {parsedData?.linkedinUrl && (
             <div className="flex items-center gap-2">
               <ExternalLink size={13} style={{ color: '#A50000', flexShrink: 0 }} />
-              <a href={parsedData.linkedinUrl} target="_blank" rel="noreferrer" className="text-sm hover:underline" style={{ color: '#0284C7' }}>LinkedIn Profile</a>
+              <a href={parsedData.linkedinUrl} target="_blank" rel="noreferrer"
+                className="text-sm hover:underline" style={{ color: '#0284C7' }}>LinkedIn Profile</a>
             </div>
           )}
         </div>
 
-        {/* Summary */}
         {parsedData?.summary && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Summary</p>
@@ -302,7 +481,6 @@ function CandidateDetailPanel({
           </div>
         )}
 
-        {/* Skills */}
         {parsedData?.skills?.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Skills</p>
@@ -314,7 +492,6 @@ function CandidateDetailPanel({
           </div>
         )}
 
-        {/* Experience */}
         {parsedData?.experience?.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>
@@ -333,7 +510,6 @@ function CandidateDetailPanel({
           </div>
         )}
 
-        {/* Education */}
         {parsedData?.education?.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Education</p>
@@ -352,7 +528,6 @@ function CandidateDetailPanel({
           </div>
         )}
 
-        {/* Languages */}
         {parsedData?.languages?.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Languages</p>
@@ -364,7 +539,6 @@ function CandidateDetailPanel({
           </div>
         )}
 
-        {/* Achievements */}
         {parsedData?.achievements?.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Achievements</p>
@@ -378,7 +552,6 @@ function CandidateDetailPanel({
           </div>
         )}
 
-        {/* Personal Details */}
         {parsedData?.personalDetails && Object.values(parsedData.personalDetails).some(v => v) && (
           <div className="space-y-2">
             <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#606060' }}>Personal Details</p>
@@ -400,18 +573,23 @@ function CandidateDetailPanel({
         )}
       </div>
 
-      {/* Delete Confirm */}
       <AnimatePresence>
         {showDeleteConfirm && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.8)' }}>
-            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="rounded-xl p-6 w-full max-w-sm" style={{ background: '#111111', border: '1px solid #2E2E2E' }}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            style={{ background: 'rgba(0,0,0,0.8)' }}>
+            <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }}
+              className="rounded-xl p-6 w-full max-w-sm"
+              style={{ background: '#111111', border: '1px solid #2E2E2E' }}>
               <h3 className="text-base font-bold mb-2" style={{ color: '#FFFFFF', fontFamily: 'var(--font-syne)' }}>Remove Candidate?</h3>
               <p className="text-sm mb-4" style={{ color: '#A0A0A0' }}>
                 This will permanently delete <strong style={{ color: '#FFFFFF' }}>{candidate.name}</strong> and all their data.
               </p>
               <div className="flex gap-3">
-                <Button onClick={() => setShowDeleteConfirm(false)} variant="outline" className="flex-1 h-9" style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>Cancel</Button>
-                <Button onClick={handleDelete} disabled={deleteCandidate.isPending} className="flex-1 h-9" style={{ background: '#DC2626', color: '#FFFFFF', border: 'none' }}>
+                <Button onClick={() => setShowDeleteConfirm(false)} variant="outline" className="flex-1 h-9"
+                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>Cancel</Button>
+                <Button onClick={handleDelete} disabled={deleteCandidate.isPending} className="flex-1 h-9"
+                  style={{ background: '#DC2626', color: '#FFFFFF', border: 'none' }}>
                   {deleteCandidate.isPending ? <Loader2 size={14} className="animate-spin" /> : 'Remove'}
                 </Button>
               </div>
@@ -425,16 +603,14 @@ function CandidateDetailPanel({
 
 // ── Candidate Card ────────────────────────────────────────
 function CandidateCard({
-  candidate, onStageChange, onSelect, isSelected,
+  candidate, onSelect, isSelected,
 }: {
   candidate: any
-  onStageChange: (id: string, stage: string) => void
   onSelect: (candidate: any) => void
   isSelected: boolean
 }) {
-  const stage = STAGES.find((s) => s.key === candidate.stage)
+  const stage = STAGES.find(s => s.key === candidate.stage)
   const score = candidate.cvScore?.totalScore
-  const nextStage = STAGES[STAGES.findIndex((s) => s.key === candidate.stage) + 1]
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const qc = useQueryClient()
@@ -471,18 +647,13 @@ function CandidateCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className="p-4 rounded-xl border mb-3 cursor-pointer transition-all"
-      style={{
-        background: isSelected ? '#1A0000' : '#111111',
-        borderColor: isSelected ? '#A50000' : '#1A1A1A',
-      }}
+      style={{ background: isSelected ? '#1A0000' : '#111111', borderColor: isSelected ? '#A50000' : '#1A1A1A' }}
       onClick={() => onSelect(candidate)}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
-            style={{ background: '#1A1A1A', color: '#A50000' }}
-          >
+          <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0"
+            style={{ background: '#1A1A1A', color: '#A50000' }}>
             {candidate.name?.charAt(0)?.toUpperCase()}
           </div>
           <div>
@@ -494,51 +665,35 @@ function CandidateCard({
           <div className="text-xs font-bold px-2 py-1 rounded-lg" style={{
             background: score >= 70 ? '#052E16' : score >= 50 ? '#1C1007' : '#1A0000',
             color: score >= 70 ? '#16A34A' : score >= 50 ? '#D97706' : '#A50000',
-          }}>
-            {Math.round(score)}%
-          </div>
+          }}>{Math.round(score)}%</div>
         ) : (
           <div className="text-xs px-2 py-1 rounded-lg" style={{ background: '#1A1A1A', color: '#606060' }}>No score</div>
         )}
       </div>
 
-      <div className="mt-3 pt-3 flex items-center gap-2" style={{ borderTop: '1px solid #1A1A1A' }} onClick={(e) => e.stopPropagation()}>
+      <div className="mt-3 pt-3 flex items-center gap-2" style={{ borderTop: '1px solid #1A1A1A' }}
+        onClick={e => e.stopPropagation()}>
         <input ref={fileInputRef} type="file" accept=".pdf" className="hidden" onChange={handleCvUpload} />
         {!candidate.cvScore ? (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
             className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0"
-            style={{ background: '#1A1A1A', color: uploading ? '#606060' : '#A0A0A0', border: '1px dashed #2E2E2E' }}
-          >
+            style={{ background: '#1A1A1A', color: uploading ? '#606060' : '#A0A0A0', border: '1px dashed #2E2E2E' }}>
             {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
             {uploading ? 'Uploading...' : 'Upload CV'}
           </button>
         ) : (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+          <button onClick={() => fileInputRef.current?.click()} disabled={uploading}
             className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg transition-colors flex-shrink-0"
-            style={{ background: '#052E16', color: '#16A34A', border: '1px solid #16A34A20' }}
-          >
+            style={{ background: '#052E16', color: '#16A34A', border: '1px solid #16A34A20' }}>
             {uploading ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
             {uploading ? 'Uploading...' : 'CV Uploaded — Replace'}
-          </button>
-        )}
-        <div className="flex-1" />
-        {nextStage && nextStage.key !== 'REJECTED' && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onStageChange(candidate.id, nextStage.key) }}
-            className="flex items-center gap-1 text-xs transition-colors hover:opacity-80 flex-shrink-0"
-            style={{ color: nextStage.color }}
-          >
-            {nextStage.label} <ArrowRight size={12} />
           </button>
         )}
       </div>
 
       <div className="mt-2">
-        <div className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full" style={{ background: `${stage?.color}15`, color: stage?.color }}>
+        <div className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-full"
+          style={{ background: `${stage?.color}15`, color: stage?.color }}>
           <Circle size={6} fill={stage?.color} />
           {stage?.label}
         </div>
@@ -547,131 +702,8 @@ function CandidateCard({
   )
 }
 
-// ── Create Job Modal ──────────────────────────────────────
-function CreateJobModal({
-  open, onClose,
-}: {
-  open: boolean; onClose: () => void
-}) {
-  const createJob = useCreateJob()
-  const { register, handleSubmit, reset, formState: { errors } } = useForm({
-    resolver: zodResolver(createJobSchema),
-  })
-
-  const onSubmit = async (data: any) => {
-    await createJob.mutateAsync({
-      ...data,
-      salaryMin: data.salaryMin ? parseInt(data.salaryMin) : undefined,
-      salaryMax: data.salaryMax ? parseInt(data.salaryMax) : undefined,
-    })
-    reset()
-    onClose()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent
-        className="max-w-lg"
-        style={{ background: '#111111', border: '1px solid #2E2E2E' }}
-      >
-        <DialogHeader>
-          <DialogTitle style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}>
-            Post New Job
-          </DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-2">
-          {[
-            { id: 'title', label: 'JOB TITLE *', placeholder: 'e.g. Senior Frontend Engineer' },
-            { id: 'description', label: 'DESCRIPTION', placeholder: 'Job description...', textarea: true },
-            { id: 'requirements', label: 'REQUIREMENTS', placeholder: 'Required skills and experience...', textarea: true },
-          ].map((field) => (
-            <div key={field.id} className="space-y-1.5">
-              <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>
-                {field.label}
-              </Label>
-              {field.textarea ? (
-                <textarea
-                  {...register(field.id as any)}
-                  placeholder={field.placeholder}
-                  rows={3}
-                  className="w-full rounded-lg px-3 py-2 text-sm resize-none"
-                  style={{
-                    background: '#0A0A0A',
-                    border: '1px solid #2E2E2E',
-                    color: '#FFFFFF',
-                    outline: 'none',
-                  }}
-                />
-              ) : (
-                <Input
-                  {...register(field.id as any)}
-                  placeholder={field.placeholder}
-                  className="h-10"
-                  style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF' }}
-                />
-              )}
-              {(errors as any)[field.id] && (
-                <p className="text-xs" style={{ color: '#DC2626' }}>
-                  {(errors as any)[field.id]?.message}
-                </p>
-              )}
-            </div>
-          ))}
-
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { id: 'salaryMin', label: 'SALARY MIN', placeholder: '50000' },
-              { id: 'salaryMax', label: 'SALARY MAX', placeholder: '80000' },
-            ].map((field) => (
-              <div key={field.id} className="space-y-1.5">
-                <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>
-                  {field.label}
-                </Label>
-                <Input
-                  {...register(field.id as any)}
-                  placeholder={field.placeholder}
-                  type="number"
-                  className="h-10"
-                  style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF' }}
-                />
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="flex-1 h-10"
-              style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={createJob.isPending}
-              className="flex-1 h-10"
-              style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
-            >
-              {createJob.isPending ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : 'Post Job'}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 // ── Add Candidate Modal ────────────────────────────────────
-function AddCandidateModal({
-  open, onClose, jobId,
-}: {
-  open: boolean; onClose: () => void; jobId: string
-}) {
+function AddCandidateModal({ open, onClose, jobId }: { open: boolean; onClose: () => void; jobId: string }) {
   const [mode, setMode] = useState<'select' | 'cv' | 'excel' | 'manual'>('select')
   const [cvFiles, setCvFiles] = useState<File[]>([])
   const [excelFile, setExcelFile] = useState<File | null>(null)
@@ -687,18 +719,13 @@ function AddCandidateModal({
   })
 
   const handleClose = () => {
-    setMode('select')
-    setCvFiles([])
-    setExcelFile(null)
-    setResults(null)
-    reset()
-    onClose()
+    setMode('select'); setCvFiles([]); setExcelFile(null); setResults(null); reset(); onClose()
   }
 
   const handleCvSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    const pdfs = files.filter((f) => f.type === 'application/pdf')
-    if (pdfs.length !== files.length) toast.warning('Only PDF files are accepted. Non-PDFs were skipped.')
+    const pdfs = files.filter(f => f.type === 'application/pdf')
+    if (pdfs.length !== files.length) toast.warning('Only PDF files are accepted.')
     setCvFiles(pdfs)
   }
 
@@ -707,12 +734,10 @@ function AddCandidateModal({
     setUploading(true)
     try {
       const formData = new FormData()
-      cvFiles.forEach((file) => formData.append('files', file))
+      cvFiles.forEach(file => formData.append('files', file))
       const token = localStorage.getItem('craftonis_access_token')
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/cv/bulk-parse/${jobId}`,
-        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
-      )
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/cv/bulk-parse/${jobId}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Upload failed')
       setResults(data)
@@ -722,23 +747,17 @@ function AddCandidateModal({
       toast.success(`${data.summary.created} candidate(s) added from CV!`)
     } catch (err: any) {
       toast.error(err.message || 'Failed to upload CVs')
-    } finally {
-      setUploading(false)
-    }
+    } finally { setUploading(false) }
   }
 
   const handleDownloadTemplate = async () => {
     const token = localStorage.getItem('craftonis_access_token')
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/candidates/template/excel`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    )
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/candidates/template/excel`,
+      { headers: { Authorization: `Bearer ${token}` } })
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = url
-    a.download = 'craftonis-candidate-template.xlsx'
-    a.click()
+    a.href = url; a.download = 'craftonis-candidate-template.xlsx'; a.click()
     URL.revokeObjectURL(url)
     toast.success('Template downloaded!')
   }
@@ -750,36 +769,28 @@ function AddCandidateModal({
       const formData = new FormData()
       formData.append('file', excelFile)
       const token = localStorage.getItem('craftonis_access_token')
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/jobs/${jobId}/import-excel`,
-        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData }
-      )
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/jobs/${jobId}/import-excel`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData })
       const data = await res.json()
       if (!res.ok) throw new Error(data.message || 'Import failed')
       setResults(data)
       qc.invalidateQueries({ queryKey: ['candidates'] })
       qc.invalidateQueries({ queryKey: ['jobs'] })
       qc.invalidateQueries({ queryKey: ['pipeline-stats'] })
-      toast.success(`${data.summary.created} candidate(s) imported from Excel!`)
+      toast.success(`${data.summary.created} candidate(s) imported!`)
     } catch (err: any) {
       toast.error(err.message || 'Failed to import Excel')
-    } finally {
-      setUploading(false)
-    }
+    } finally { setUploading(false) }
   }
 
   const onManualSubmit = async (data: any) => {
     await createCandidate.mutateAsync({ ...data, jobId })
-    reset()
-    handleClose()
+    reset(); handleClose()
   }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent
-        className="max-w-lg"
-        style={{ background: '#111111', border: '1px solid #2E2E2E' }}
-      >
+      <DialogContent className="max-w-lg" style={{ background: '#111111', border: '1px solid #2E2E2E' }}>
         <DialogHeader>
           <DialogTitle style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}>
             {mode === 'select' && 'Add Candidate'}
@@ -790,71 +801,32 @@ function AddCandidateModal({
         </DialogHeader>
 
         <AnimatePresence mode="wait">
-
-          {/* ── MODE SELECT ── */}
           {mode === 'select' && (
-            <motion.div
-              key="select"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="space-y-3 mt-2"
-            >
+            <motion.div key="select" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }} className="space-y-3 mt-2">
               {[
-                {
-                  mode: 'cv' as const,
-                  icon: FileText,
-                  title: 'From CV (PDF)',
-                  desc: 'Upload one or multiple CVs — AI auto-extracts name, contact, skills, experience',
-                  badge: 'Recommended',
-                  badgeColor: '#16A34A',
-                },
-                {
-                  mode: 'excel' as const,
-                  icon: FileSpreadsheet,
-                  title: 'From Excel',
-                  desc: 'Bulk import from spreadsheet. Include CV links for auto-parse.',
-                  badge: 'Bulk',
-                  badgeColor: '#0284C7',
-                },
-                {
-                  mode: 'manual' as const,
-                  icon: UserPlus,
-                  title: 'Manual Entry',
-                  desc: 'Fill in candidate details manually.',
-                  badge: null,
-                  badgeColor: '',
-                },
-              ].map((option) => (
-                <button
-                  key={option.mode}
-                  onClick={() => setMode(option.mode)}
+                { mode: 'cv' as const, icon: FileText, title: 'From CV (PDF)', desc: 'AI auto-extracts name, contact, skills, experience', badge: 'Recommended', badgeColor: '#16A34A' },
+                { mode: 'excel' as const, icon: FileSpreadsheet, title: 'From Excel', desc: 'Bulk import from spreadsheet.', badge: 'Bulk', badgeColor: '#0284C7' },
+                { mode: 'manual' as const, icon: UserPlus, title: 'Manual Entry', desc: 'Fill in candidate details manually.', badge: null, badgeColor: '' },
+              ].map(option => (
+                <button key={option.mode} onClick={() => setMode(option.mode)}
                   className="w-full flex items-start gap-4 p-4 rounded-xl border text-left transition-all hover:border-crimson"
-                  style={{ background: '#0A0A0A', borderColor: '#2E2E2E' }}
-                >
-                  <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{ background: '#1A1A1A' }}
-                  >
+                  style={{ background: '#0A0A0A', borderColor: '#2E2E2E' }}>
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{ background: '#1A1A1A' }}>
                     <option.icon size={20} style={{ color: '#A50000' }} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
-                        {option.title}
-                      </span>
+                      <span className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{option.title}</span>
                       {option.badge && (
-                        <span
-                          className="text-xs px-2 py-0.5 rounded-full font-medium"
-                          style={{ background: `${option.badgeColor}20`, color: option.badgeColor }}
-                        >
+                        <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                          style={{ background: `${option.badgeColor}20`, color: option.badgeColor }}>
                           {option.badge}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs mt-1" style={{ color: '#606060' }}>
-                      {option.desc}
-                    </p>
+                    <p className="text-xs mt-1" style={{ color: '#606060' }}>{option.desc}</p>
                   </div>
                   <ChevronRight size={16} style={{ color: '#606060', flexShrink: 0, marginTop: 2 }} />
                 </button>
@@ -862,64 +834,32 @@ function AddCandidateModal({
             </motion.div>
           )}
 
-          {/* ── FROM CV ── */}
           {mode === 'cv' && !results && (
-            <motion.div
-              key="cv"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="space-y-4 mt-2"
-            >
-              <input
-                ref={cvInputRef}
-                type="file"
-                accept=".pdf"
-                multiple
-                className="hidden"
-                onChange={handleCvSelect}
-              />
-
-              <button
-                onClick={() => cvInputRef.current?.click()}
+            <motion.div key="cv" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }} className="space-y-4 mt-2">
+              <input ref={cvInputRef} type="file" accept=".pdf" multiple className="hidden" onChange={handleCvSelect} />
+              <button onClick={() => cvInputRef.current?.click()}
                 className="w-full h-36 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-3 transition-colors"
-                style={{ borderColor: cvFiles.length ? '#A50000' : '#2E2E2E', background: '#0A0A0A' }}
-              >
+                style={{ borderColor: cvFiles.length ? '#A50000' : '#2E2E2E', background: '#0A0A0A' }}>
                 {cvFiles.length === 0 ? (
-                  <>
-                    <Upload size={28} style={{ color: '#606060' }} />
+                  <><Upload size={28} style={{ color: '#606060' }} />
                     <div className="text-center">
-                      <p className="text-sm font-medium" style={{ color: '#A0A0A0' }}>
-                        Click to select PDF files
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: '#606060' }}>
-                        Multiple CVs supported — max 5MB each
-                      </p>
-                    </div>
-                  </>
+                      <p className="text-sm font-medium" style={{ color: '#A0A0A0' }}>Click to select PDF files</p>
+                      <p className="text-xs mt-1" style={{ color: '#606060' }}>Multiple CVs supported — max 5MB each</p>
+                    </div></>
                 ) : (
-                  <>
-                    <CheckCircle2 size={28} style={{ color: '#A50000' }} />
+                  <><CheckCircle2 size={28} style={{ color: '#A50000' }} />
                     <div className="text-center">
-                      <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
-                        {cvFiles.length} PDF{cvFiles.length > 1 ? 's' : ''} selected
-                      </p>
-                      <p className="text-xs mt-1" style={{ color: '#606060' }}>
-                        Click to change selection
-                      </p>
-                    </div>
-                  </>
+                      <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>{cvFiles.length} PDF{cvFiles.length > 1 ? 's' : ''} selected</p>
+                      <p className="text-xs mt-1" style={{ color: '#606060' }}>Click to change selection</p>
+                    </div></>
                 )}
               </button>
-
               {cvFiles.length > 0 && (
                 <div className="space-y-1.5 max-h-32 overflow-y-auto">
                   {cvFiles.map((f, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
-                      style={{ background: '#1A1A1A' }}
-                    >
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                      style={{ background: '#1A1A1A' }}>
                       <FileText size={12} style={{ color: '#A50000' }} />
                       <span className="flex-1 truncate" style={{ color: '#A0A0A0' }}>{f.name}</span>
                       <span style={{ color: '#606060' }}>{(f.size / 1024).toFixed(0)}KB</span>
@@ -927,179 +867,80 @@ function AddCandidateModal({
                   ))}
                 </div>
               )}
-
-              <p className="text-xs" style={{ color: '#606060' }}>
-                AI will automatically extract: Name, Email, Phone, LinkedIn, Skills, Experience, Education from each CV.
-              </p>
-
               <div className="flex gap-3">
-                <Button
-                  type="button"
-                  onClick={() => setMode('select')}
-                  variant="outline"
-                  className="flex-1 h-10"
-                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={handleCvUpload}
-                  disabled={!cvFiles.length || uploading}
-                  className="flex-1 h-10"
-                  style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
-                >
-                  {uploading ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 size={16} className="animate-spin" />
-                      Processing {cvFiles.length} CV{cvFiles.length > 1 ? 's' : ''}...
-                    </span>
-                  ) : (
-                    `Upload & Parse ${cvFiles.length > 0 ? `(${cvFiles.length})` : ''}`
-                  )}
+                <Button type="button" onClick={() => setMode('select')} variant="outline" className="flex-1 h-10"
+                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>Back</Button>
+                <Button onClick={handleCvUpload} disabled={!cvFiles.length || uploading} className="flex-1 h-10"
+                  style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}>
+                  {uploading ? <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />Processing...</span>
+                    : `Upload & Parse${cvFiles.length > 0 ? ` (${cvFiles.length})` : ''}`}
                 </Button>
               </div>
             </motion.div>
           )}
 
-          {/* ── FROM EXCEL ── */}
           {mode === 'excel' && !results && (
-            <motion.div
-              key="excel"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="space-y-4 mt-2"
-            >
-              <input
-                ref={excelInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={(e) => setExcelFile(e.target.files?.[0] || null)}
-              />
-
-              {/* Download template */}
-              <button
-                onClick={handleDownloadTemplate}
+            <motion.div key="excel" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }} className="space-y-4 mt-2">
+              <input ref={excelInputRef} type="file" accept=".xlsx,.xls" className="hidden"
+                onChange={e => setExcelFile(e.target.files?.[0] || null)} />
+              <button onClick={handleDownloadTemplate}
                 className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition-colors"
-                style={{ background: '#0A0A0A', borderColor: '#2E2E2E' }}
-              >
-                <div
-                  className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: '#052E16' }}
-                >
+                style={{ background: '#0A0A0A', borderColor: '#2E2E2E' }}>
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#052E16' }}>
                   <Download size={16} style={{ color: '#16A34A' }} />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>
-                    Download Excel Template
-                  </p>
-                  <p className="text-xs" style={{ color: '#606060' }}>
-                    Fill this template and upload it back
-                  </p>
+                  <p className="text-sm font-semibold" style={{ color: '#FFFFFF' }}>Download Excel Template</p>
+                  <p className="text-xs" style={{ color: '#606060' }}>Fill this template and upload it back</p>
                 </div>
               </button>
-
-              {/* Upload Excel */}
-              <button
-                onClick={() => excelInputRef.current?.click()}
+              <button onClick={() => excelInputRef.current?.click()}
                 className="w-full h-28 rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-colors"
-                style={{ borderColor: excelFile ? '#A50000' : '#2E2E2E', background: '#0A0A0A' }}
-              >
+                style={{ borderColor: excelFile ? '#A50000' : '#2E2E2E', background: '#0A0A0A' }}>
                 {excelFile ? (
-                  <>
-                    <CheckCircle2 size={24} style={{ color: '#A50000' }} />
+                  <><CheckCircle2 size={24} style={{ color: '#A50000' }} />
                     <p className="text-sm font-medium" style={{ color: '#FFFFFF' }}>{excelFile.name}</p>
-                    <p className="text-xs" style={{ color: '#606060' }}>Click to change file</p>
-                  </>
+                    <p className="text-xs" style={{ color: '#606060' }}>Click to change</p></>
                 ) : (
-                  <>
-                    <Upload size={24} style={{ color: '#606060' }} />
-                    <p className="text-sm" style={{ color: '#A0A0A0' }}>
-                      Upload filled Excel file (.xlsx)
-                    </p>
-                  </>
+                  <><Upload size={24} style={{ color: '#606060' }} />
+                    <p className="text-sm" style={{ color: '#A0A0A0' }}>Upload filled Excel file (.xlsx)</p></>
                 )}
               </button>
-
-              <p className="text-xs" style={{ color: '#606060' }}>
-                Include CV links (Google Drive/Dropbox) in the template for automatic CV parsing.
-              </p>
-
               <div className="flex gap-3">
-                <Button
-                  type="button"
-                  onClick={() => setMode('select')}
-                  variant="outline"
-                  className="flex-1 h-10"
-                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
-                >
-                  Back
-                </Button>
-                <Button
-                  onClick={handleExcelUpload}
-                  disabled={!excelFile || uploading}
-                  className="flex-1 h-10"
-                  style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
-                >
-                  {uploading ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 size={16} className="animate-spin" />
-                      Importing...
-                    </span>
-                  ) : 'Import Candidates'}
+                <Button type="button" onClick={() => setMode('select')} variant="outline" className="flex-1 h-10"
+                  style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>Back</Button>
+                <Button onClick={handleExcelUpload} disabled={!excelFile || uploading} className="flex-1 h-10"
+                  style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}>
+                  {uploading ? <span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" />Importing...</span> : 'Import Candidates'}
                 </Button>
               </div>
             </motion.div>
           )}
 
-          {/* ── MANUAL ── */}
           {mode === 'manual' && (
-            <motion.div
-              key="manual"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-            >
+            <motion.div key="manual" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}>
               <form onSubmit={handleSubmit(onManualSubmit)} className="space-y-4 mt-2">
                 {[
                   { id: 'name', label: 'FULL NAME *', placeholder: 'Arif Hassan' },
                   { id: 'email', label: 'EMAIL *', placeholder: 'arif@example.com' },
                   { id: 'phone', label: 'PHONE', placeholder: '+8801712345678' },
-                ].map((field) => (
+                ].map(field => (
                   <div key={field.id} className="space-y-1.5">
-                    <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>
-                      {field.label}
-                    </Label>
-                    <Input
-                      {...register(field.id as any)}
-                      placeholder={field.placeholder}
-                      className="h-10"
-                      style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF' }}
-                    />
+                    <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>{field.label}</Label>
+                    <Input {...register(field.id as any)} placeholder={field.placeholder} className="h-10"
+                      style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF' }} />
                     {(errors as any)[field.id] && (
-                      <p className="text-xs" style={{ color: '#DC2626' }}>
-                        {(errors as any)[field.id]?.message}
-                      </p>
+                      <p className="text-xs" style={{ color: '#DC2626' }}>{(errors as any)[field.id]?.message}</p>
                     )}
                   </div>
                 ))}
                 <div className="flex gap-3 pt-2">
-                  <Button
-                    type="button"
-                    onClick={() => setMode('select')}
-                    variant="outline"
-                    className="flex-1 h-10"
-                    style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}
-                  >
-                    Back
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={createCandidate.isPending}
-                    className="flex-1 h-10"
-                    style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
-                  >
+                  <Button type="button" onClick={() => setMode('select')} variant="outline" className="flex-1 h-10"
+                    style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>Back</Button>
+                  <Button type="submit" disabled={createCandidate.isPending} className="flex-1 h-10"
+                    style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}>
                     {createCandidate.isPending ? <Loader2 size={16} className="animate-spin" /> : 'Add Candidate'}
                   </Button>
                 </div>
@@ -1107,67 +948,35 @@ function AddCandidateModal({
             </motion.div>
           )}
 
-          {/* ── RESULTS ── */}
           {results && (
-            <motion.div
-              key="results"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="space-y-4 mt-2"
-            >
-              {/* Summary */}
+            <motion.div key="results" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 mt-2">
               <div className="grid grid-cols-3 gap-3">
                 {[
                   { label: 'Total', value: results.summary.total, color: '#A0A0A0' },
                   { label: 'Added', value: results.summary.created, color: '#16A34A' },
                   { label: 'Failed', value: results.summary.failed, color: results.summary.failed > 0 ? '#DC2626' : '#606060' },
-                ].map((s) => (
-                  <div
-                    key={s.label}
-                    className="text-center p-3 rounded-xl"
-                    style={{ background: '#0A0A0A', border: '1px solid #1A1A1A' }}
-                  >
-                    <div className="text-2xl font-bold" style={{ color: s.color, fontFamily: 'var(--font-syne)' }}>
-                      {s.value}
-                    </div>
+                ].map(s => (
+                  <div key={s.label} className="text-center p-3 rounded-xl"
+                    style={{ background: '#0A0A0A', border: '1px solid #1A1A1A' }}>
+                    <div className="text-2xl font-bold" style={{ color: s.color, fontFamily: 'var(--font-syne)' }}>{s.value}</div>
                     <div className="text-xs mt-1" style={{ color: '#606060' }}>{s.label}</div>
                   </div>
                 ))}
               </div>
-
-              {/* Result list */}
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {results.results?.map((r: any, i: number) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
-                    style={{ background: '#0A0A0A' }}
-                  >
-                    {r.success ? (
-                      <CheckCircle2 size={12} style={{ color: '#16A34A' }} />
-                    ) : (
-                      <X size={12} style={{ color: '#DC2626' }} />
-                    )}
-                    <span className="flex-1 truncate" style={{ color: r.success ? '#FFFFFF' : '#606060' }}>
-                      {r.name || r.filename}
-                    </span>
-                    {!r.success && (
-                      <span style={{ color: '#DC2626' }}>{r.error}</span>
-                    )}
+                  <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs"
+                    style={{ background: '#0A0A0A' }}>
+                    {r.success ? <CheckCircle2 size={12} style={{ color: '#16A34A' }} /> : <X size={12} style={{ color: '#DC2626' }} />}
+                    <span className="flex-1 truncate" style={{ color: r.success ? '#FFFFFF' : '#606060' }}>{r.name || r.filename}</span>
+                    {!r.success && <span style={{ color: '#DC2626' }}>{r.error}</span>}
                   </div>
                 ))}
               </div>
-
-              <Button
-                onClick={handleClose}
-                className="w-full h-10"
-                style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
-              >
-                Done
-              </Button>
+              <Button onClick={handleClose} className="w-full h-10"
+                style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}>Done</Button>
             </motion.div>
           )}
-
         </AnimatePresence>
       </DialogContent>
     </Dialog>
@@ -1182,12 +991,30 @@ export default function JobsPage() {
   const [showAddCandidate, setShowAddCandidate] = useState(false)
   const [stageFilter, setStageFilter] = useState<string | null>(null)
   const [selectedCandidate, setSelectedCandidate] = useState<any | null>(null)
+  const [scheduleCandidate, setScheduleCandidate] = useState<any | null>(null)
 
-  const { data: jobs, isLoading: jobsLoading } = useJobs({ search: search || undefined })
+  // Three-dot menu actions
+  const [editJob, setEditJob] = useState<any | null>(null)
+  const [closeJob, setCloseJob] = useState<any | null>(null)
+  const [deleteJob, setDeleteJob] = useState<any | null>(null)
+
+  const updateJob = useUpdateJob()
+  const deleteJobMutation = useDeleteJob()
+
+  // Only fetch OPEN jobs in the board by default
+  const { data: jobs, isLoading: jobsLoading } = useJobs({ search: search || undefined, status: 'OPEN' })
   const { data: candidates, isLoading: candidatesLoading } = useCandidates(selectedJobId || '')
   const { data: pipelineStats } = usePipelineStats(selectedJobId || '')
   const updateStage = useUpdateCandidateStage()
   const selectedJob = jobs?.find((j: any) => j.id === selectedJobId)
+
+  // When selected job disappears from list (closed/deleted), deselect
+  useEffect(() => {
+    if (selectedJobId && jobs && !jobs.find((j: any) => j.id === selectedJobId)) {
+      setSelectedJobId(null)
+      setSelectedCandidate(null)
+    }
+  }, [jobs, selectedJobId])
 
   // Sync selectedCandidate with latest data after reparse
   useEffect(() => {
@@ -1196,7 +1023,6 @@ export default function JobsPage() {
       if (updated) {
         setSelectedCandidate(updated)
       } else if (candidates.length > 0) {
-        // Candidate was deleted — close panel
         setSelectedCandidate(null)
       }
     }
@@ -1212,63 +1038,31 @@ export default function JobsPage() {
       {/* Left — Job List */}
       <div className="w-72 flex flex-col flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
-          <h1
-            className="text-xl font-bold"
-            style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}
-          >
-            Jobs
-          </h1>
-          <Button
-            onClick={() => setShowCreateJob(true)}
-            size="sm"
-            className="h-8 gap-1.5"
-            style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
-          >
-            <Plus size={14} />
-            Post Job
+          <h1 className="text-xl font-bold" style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}>Jobs</h1>
+          <Button onClick={() => setShowCreateJob(true)} size="sm" className="h-8 gap-1.5"
+            style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}>
+            <Plus size={14} />Post Job
           </Button>
         </div>
 
-        {/* Search */}
         <div className="relative mb-3">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2"
-            style={{ color: '#606060' }}
-          />
-          <Input
-            placeholder="Search jobs..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#606060' }} />
+          <Input placeholder="Search jobs..." value={search} onChange={e => setSearch(e.target.value)}
             className="h-9 pl-8 text-sm"
-            style={{
-              background: '#111111',
-              border: '1px solid #1A1A1A',
-              color: '#FFFFFF',
-            }}
-          />
+            style={{ background: '#111111', border: '1px solid #1A1A1A', color: '#FFFFFF' }} />
         </div>
 
-        {/* Job list */}
         <div className="flex-1 overflow-y-auto space-y-2 pr-1">
           {jobsLoading ? (
             <div className="flex items-center justify-center h-32">
               <Loader2 size={20} className="animate-spin" style={{ color: '#606060' }} />
             </div>
           ) : !jobs || jobs.length === 0 ? (
-            <div
-              className="flex flex-col items-center justify-center h-48 rounded-xl border"
-              style={{ background: '#111111', borderColor: '#1A1A1A' }}
-            >
+            <div className="flex flex-col items-center justify-center h-48 rounded-xl border"
+              style={{ background: '#111111', borderColor: '#1A1A1A' }}>
               <Briefcase size={32} style={{ color: '#2E2E2E' }} />
-              <p className="text-sm mt-3" style={{ color: '#606060' }}>
-                No jobs yet
-              </p>
-              <button
-                onClick={() => setShowCreateJob(true)}
-                className="text-xs mt-2"
-                style={{ color: '#A50000' }}
-              >
+              <p className="text-sm mt-3" style={{ color: '#606060' }}>No open jobs</p>
+              <button onClick={() => setShowCreateJob(true)} className="text-xs mt-2" style={{ color: '#A50000' }}>
                 Post your first job
               </button>
             </div>
@@ -1279,6 +1073,9 @@ export default function JobsPage() {
                 job={job}
                 isSelected={selectedJobId === job.id}
                 onClick={() => setSelectedJobId(job.id)}
+                onEdit={j => setEditJob(j)}
+                onClose={j => setCloseJob(j)}
+                onDelete={j => setDeleteJob(j)}
               />
             ))
           )}
@@ -1288,98 +1085,68 @@ export default function JobsPage() {
       {/* Right — Candidate Pipeline */}
       <div className="flex-1 flex flex-col min-w-0">
         {!selectedJobId ? (
-          <div
-            className="flex-1 flex flex-col items-center justify-center rounded-xl border"
-            style={{ background: '#111111', borderColor: '#1A1A1A' }}
-          >
+          <div className="flex-1 flex flex-col items-center justify-center rounded-xl border"
+            style={{ background: '#111111', borderColor: '#1A1A1A' }}>
             <Briefcase size={48} style={{ color: '#2E2E2E' }} />
-            <p className="text-base mt-4 font-medium" style={{ color: '#606060' }}>
-              Select a job to view candidates
-            </p>
-            <p className="text-sm mt-1" style={{ color: '#3D3D3D' }}>
-              or post a new job to get started
-            </p>
+            <p className="text-base mt-4 font-medium" style={{ color: '#606060' }}>Select a job to view candidates</p>
+            <p className="text-sm mt-1" style={{ color: '#3D3D3D' }}>or post a new job to get started</p>
           </div>
         ) : (
           <>
-            {/* Pipeline Header */}
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2
-                  className="text-lg font-bold"
-                  style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}
-                >
+                <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}>
                   {selectedJob?.title}
                 </h2>
-                <p className="text-sm" style={{ color: '#606060' }}>
-                  {candidates?.length ?? 0} candidates
-                </p>
+                <p className="text-sm" style={{ color: '#606060' }}>{candidates?.length ?? 0} candidates</p>
               </div>
-              <Button
-                onClick={() => setShowAddCandidate(true)}
-                size="sm"
-                className="h-8 gap-1.5"
-                style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
-              >
-                <Plus size={14} />
-                Add Candidate
+              <Button onClick={() => setShowAddCandidate(true)} size="sm" className="h-8 gap-1.5"
+                style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}>
+                <Plus size={14} />Add Candidate
               </Button>
             </div>
 
-            {/* Stage Filter */}
             <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
-              <button
-                onClick={() => setStageFilter(null)}
+              <button onClick={() => setStageFilter(null)}
                 className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0"
                 style={{
                   background: !stageFilter ? '#A50000' : '#111111',
                   color: !stageFilter ? '#FFFFFF' : '#606060',
                   border: `1px solid ${!stageFilter ? '#A50000' : '#2E2E2E'}`,
-                }}
-              >
+                }}>
                 All ({candidates?.length ?? 0})
               </button>
-              {STAGES.map((stage) => {
+              {STAGES.map(stage => {
                 const count = pipelineStats?.find((s: any) => s.stage === stage.key)?.count ?? 0
                 const isActive = stageFilter === stage.key
                 return (
-                  <button
-                    key={stage.key}
-                    onClick={() => setStageFilter(isActive ? null : stage.key)}
+                  <button key={stage.key} onClick={() => setStageFilter(isActive ? null : stage.key)}
                     className="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0"
                     style={{
                       background: isActive ? `${stage.color}20` : '#111111',
                       color: isActive ? stage.color : '#606060',
                       border: `1px solid ${isActive ? stage.color : '#2E2E2E'}`,
-                    }}
-                  >
+                    }}>
                     {stage.label} ({count})
                   </button>
                 )
               })}
             </div>
 
-            {/* Candidates */}
             <div className="flex-1 overflow-y-auto">
               {candidatesLoading ? (
                 <div className="flex items-center justify-center h-32">
                   <Loader2 size={20} className="animate-spin" style={{ color: '#606060' }} />
                 </div>
               ) : !filteredCandidates || filteredCandidates.length === 0 ? (
-                <div
-                  className="flex flex-col items-center justify-center h-48 rounded-xl border"
-                  style={{ background: '#111111', borderColor: '#1A1A1A' }}
-                >
+                <div className="flex flex-col items-center justify-center h-48 rounded-xl border"
+                  style={{ background: '#111111', borderColor: '#1A1A1A' }}>
                   <User size={32} style={{ color: '#2E2E2E' }} />
                   <p className="text-sm mt-3" style={{ color: '#606060' }}>
                     No candidates {stageFilter ? `in ${STAGES.find(s => s.key === stageFilter)?.label}` : 'yet'}
                   </p>
                   {!stageFilter && (
-                    <button
-                      onClick={() => setShowAddCandidate(true)}
-                      className="text-xs mt-2"
-                      style={{ color: '#A50000' }}
-                    >
+                    <button onClick={() => setShowAddCandidate(true)} className="text-xs mt-2" style={{ color: '#A50000' }}>
                       Add first candidate
                     </button>
                   )}
@@ -1392,9 +1159,6 @@ export default function JobsPage() {
                       candidate={candidate}
                       isSelected={selectedCandidate?.id === candidate.id}
                       onSelect={setSelectedCandidate}
-                      onStageChange={(id, stage) =>
-                        updateStage.mutate({ id, stage })
-                      }
                     />
                   ))}
                 </div>
@@ -1412,22 +1176,60 @@ export default function JobsPage() {
             onClose={() => setSelectedCandidate(null)}
             onDelete={() => setSelectedCandidate(null)}
             updateStage={updateStage}
+            onScheduleInterview={setScheduleCandidate}
           />
         )}
       </AnimatePresence>
 
-      {/* Modals */}
-      <CreateJobModal
-        open={showCreateJob}
-        onClose={() => setShowCreateJob(false)}
+      {/* ── Modals ── */}
+
+      {/* Create / Edit Job */}
+      <JobFormModal open={showCreateJob} onClose={() => setShowCreateJob(false)} />
+      <JobFormModal open={!!editJob} onClose={() => setEditJob(null)} initial={editJob} />
+
+      {/* Mark Hiring Completed */}
+      <ConfirmDialog
+        open={!!closeJob}
+        onClose={() => setCloseJob(null)}
+        title="Mark as Hiring Completed?"
+        body={<>This will archive <strong style={{ color: '#FFFFFF' }}>{closeJob?.title}</strong> and hide it from the active job board.</>}
+        confirmLabel="Mark Complete"
+        confirmStyle={{ background: '#16A34A', color: '#FFFFFF', border: 'none' }}
+        loading={updateJob.isPending}
+        onConfirm={async () => {
+          await updateJob.mutateAsync({ id: closeJob.id, status: 'CLOSED' })
+          setCloseJob(null)
+        }}
       />
+
+      {/* Delete Job */}
+      <ConfirmDialog
+        open={!!deleteJob}
+        onClose={() => setDeleteJob(null)}
+        title="Delete Job?"
+        body={<>Delete <strong style={{ color: '#FFFFFF' }}>{deleteJob?.title}</strong>? All associated candidates will also be removed. This cannot be undone.</>}
+        confirmLabel="Delete Job"
+        confirmStyle={{ background: '#DC2626', color: '#FFFFFF', border: 'none' }}
+        loading={deleteJobMutation.isPending}
+        onConfirm={async () => {
+          await deleteJobMutation.mutateAsync(deleteJob.id)
+          setDeleteJob(null)
+        }}
+      />
+
       {selectedJobId && (
-        <AddCandidateModal
-          open={showAddCandidate}
-          onClose={() => setShowAddCandidate(false)}
-          jobId={selectedJobId}
-        />
+        <AddCandidateModal open={showAddCandidate} onClose={() => setShowAddCandidate(false)} jobId={selectedJobId} />
       )}
+
+      <ScheduleInterviewModal
+        open={!!scheduleCandidate}
+        onClose={() => setScheduleCandidate(null)}
+        preselectedJobId={selectedJobId ?? undefined}
+        preselectedJobTitle={selectedJob?.title}
+        preselectedCandidateId={scheduleCandidate?.id}
+        preselectedCandidateName={scheduleCandidate?.name}
+        lockCandidate
+      />
     </div>
   )
 }

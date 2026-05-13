@@ -27,6 +27,7 @@ model Tenant {
   leads         Lead[]
   tokenLedger   TokenLedger[]
   subscriptions Subscription[]
+  questions     Question[]
 
   @@map("tenants")
 }
@@ -103,6 +104,7 @@ model Job {
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   department   Department? @relation(fields: [departmentId], references: [id])
   candidates   Candidate[]
+  interviews   Interview[]
 
   @@map("jobs")
 }
@@ -111,6 +113,7 @@ enum JobStatus {
   OPEN
   PAUSED
   CLOSED
+  DRAFT
 }
 
 // ── CANDIDATES ─────────────────────────────────────────────
@@ -167,6 +170,7 @@ model Interview {
   id            String          @id @default(uuid())
   candidateId   String
   interviewerId String
+  jobId         String?
   type          InterviewType   @default(BEHAVIORAL)
   scheduledAt   DateTime?
   status        InterviewStatus @default(SCHEDULED)
@@ -176,11 +180,13 @@ model Interview {
   updatedAt     DateTime        @updatedAt
 
   candidate     Candidate       @relation(fields: [candidateId], references: [id])
+  job           Job?            @relation(fields: [jobId], references: [id])
 
   @@map("interviews")
 }
 
 enum InterviewType {
+  GENERAL
   TECHNICAL
   BEHAVIORAL
 }
@@ -442,4 +448,22 @@ enum SubscriptionStatus {
 enum BillingCycle {
   MONTHLY
   ANNUAL
+}
+
+// ── QUESTION BANK ──────────────────────────────────────────
+model Question {
+  id        String        @id @default(uuid())
+  tenantId  String
+  type      InterviewType
+  text      String
+  category  String?
+  isCustom  Boolean       @default(false)
+  order     Int           @default(0)
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+
+  @@map("questions")
 }

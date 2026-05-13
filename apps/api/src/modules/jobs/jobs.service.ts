@@ -90,12 +90,19 @@ export class JobsService {
     });
     if (!job) throw new NotFoundException('Job not found');
 
-    await this.prisma.job.update({
-      where: { id: jobId },
-      data: { status: 'CLOSED' },
+    // Cascade: remove cv scores, interviews, then candidates, then job
+    const candidates = await this.prisma.candidate.findMany({
+      where: { jobId, tenantId },
+      select: { id: true },
     });
+    const candidateIds = candidates.map((c) => c.id);
 
-    return { success: true, message: 'Job archived successfully' };
+    await this.prisma.cvScore.deleteMany({ where: { candidateId: { in: candidateIds } } });
+    await this.prisma.interview.deleteMany({ where: { candidateId: { in: candidateIds } } });
+    await this.prisma.candidate.deleteMany({ where: { jobId, tenantId } });
+    await this.prisma.job.delete({ where: { id: jobId } });
+
+    return { success: true, message: 'Job deleted successfully' };
   }
 
   // ── CANDIDATES ────────────────────────────────────
