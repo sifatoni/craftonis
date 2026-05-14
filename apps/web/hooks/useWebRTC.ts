@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { api } from '@/lib/axios';
 
 interface UseWebRTCParams {
   roomCode: string;
@@ -26,6 +27,8 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isWaiting, setIsWaiting] = useState(!isHost);
+  const [waitingList, setWaitingList] = useState<Participant[]>([]);
 
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
@@ -42,11 +45,44 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
       socketRef.current = io(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/meetings`);
 
       socketRef.current.on('connect', () => {
+        if (isHost) {
+          setIsWaiting(false);
+          socketRef.current?.emit('join-room', { roomCode, userId, userName }, (response: { participants: Participant[] }) => {
+            const others = response.participants.filter(p => p.userId !== userId);
+            setParticipants(others);
+          });
+        } else {
+          socketRef.current?.emit('request-join', { roomCode, userId, userName });
+        }
+      });
+
+      socketRef.current.on('admitted', () => {
+        setIsWaiting(false);
         socketRef.current?.emit('join-room', { roomCode, userId, userName }, (response: { participants: Participant[] }) => {
-          // Initialize participants from server response (excluding self)
           const others = response.participants.filter(p => p.userId !== userId);
           setParticipants(others);
         });
+      });
+
+      socketRef.current.on('rejected', () => {
+        // Redirection handled in page.tsx if needed, but we should do it here or let UI know
+        window.location.href = '/meeting-ledger?rejected=true';
+      });
+
+      socketRef.current.on('kicked', () => {
+        leaveRoom();
+        window.location.href = '/meeting-ledger?kicked=true';
+      });
+
+      socketRef.current.on('guest-waiting', (guest: Participant) => {
+        if (isHost) {
+          setWaitingList(prev => {
+            if (!prev.find(p => p.userId === guest.userId)) {
+              return [...prev, guest];
+            }
+            return prev;
+          });
+        }
       });
 
       socketRef.current.on('user-joined', async (participant: Participant) => {
@@ -113,6 +149,11 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
           }
           return prev.filter(p => p.userId !== leftUserId);
         });
+        
+        // Also remove from waiting list if they were there
+        if (isHost) {
+          setWaitingList(prev => prev.filter(p => p.userId !== leftUserId));
+        }
       });
 
       socketRef.current.on('meeting-ended', () => {
@@ -153,7 +194,7 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
   useEffect(() => {
     initSocketAndMedia();
     return () => leaveRoom();
-  }, [roomCode, userId]);
+  }, [roomCode, userId, isHost]);
 
   const toggleMic = useCallback(() => {
     if (localStreamRef.current) {
@@ -177,7 +218,6 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
 
   const startScreenShare = async () => {
     if (isScreenSharing) {
-      // Stop screen sharing
       if (originalVideoTrackRef.current && localStreamRef.current) {
         const senders = Array.from(peerConnectionsRef.current.values()).map(pc => 
           pc.getSenders().find(s => s.track?.kind === 'video')
@@ -187,7 +227,6 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
           if (sender) sender.replaceTrack(originalVideoTrackRef.current);
         });
 
-        // Update local stream
         localStreamRef.current.getVideoTracks()[0].stop();
         localStreamRef.current.removeTrack(localStreamRef.current.getVideoTracks()[0]);
         localStreamRef.current.addTrack(originalVideoTrackRef.current);
@@ -202,7 +241,7 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
       const screenTrack = screenStream.getVideoTracks()[0];
 
       screenTrack.onended = () => {
-        startScreenShare(); // Revert on stop
+        startScreenShare();
       };
 
       if (localStreamRef.current) {
@@ -241,11 +280,45 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
     }
   }, [roomCode, userId]);
 
-  const endMeeting = useCallback(() => {
+  const endMeeting = useCallback(async () => {
     if (isHost && socketRef.current) {
-      socketRef.current.emit('end-meeting', { roomCode, hostId: userId });
+      try {
+        await api.put(`/meetings/${roomCode}/end`);
+        socketRef.current.emit('end-meeting', { roomCode, hostId: userId });
+        
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        if (originalVideoTrackRef.current) {
+          originalVideoTrackRef.current.stop();
+        }
+        
+        window.location.href = '/meeting-ledger';
+      } catch (err) {
+        console.error('Failed to end meeting API call', err);
+      }
     }
   }, [roomCode, userId, isHost]);
+
+  const admitGuest = useCallback((targetSocketId: string) => {
+    if (isHost && socketRef.current) {
+      socketRef.current.emit('admit-guest', { roomCode, targetSocketId });
+      setWaitingList(prev => prev.filter(p => p.socketId !== targetSocketId));
+    }
+  }, [roomCode, isHost]);
+
+  const rejectGuest = useCallback((targetSocketId: string) => {
+    if (isHost && socketRef.current) {
+      socketRef.current.emit('reject-guest', { roomCode, targetSocketId });
+      setWaitingList(prev => prev.filter(p => p.socketId !== targetSocketId));
+    }
+  }, [roomCode, isHost]);
+
+  const kickParticipant = useCallback((targetSocketId: string) => {
+    if (isHost && socketRef.current) {
+      socketRef.current.emit('kick-participant', { roomCode, targetSocketId });
+    }
+  }, [roomCode, isHost]);
 
   return {
     localStream,
@@ -259,5 +332,10 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
     isCameraOn,
     isScreenSharing,
     socket: socketRef.current,
+    isWaiting,
+    waitingList,
+    admitGuest,
+    rejectGuest,
+    kickParticipant,
   };
 }

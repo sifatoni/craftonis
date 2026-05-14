@@ -22,6 +22,8 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   // roomCode -> Set<Participant>
   private rooms = new Map<string, Set<Participant>>();
+  // roomCode -> Set<Participant>
+  private waitingRooms = new Map<string, Set<Participant>>();
   // socketId -> roomCode
   private socketToRoom = new Map<string, string>();
 
@@ -33,6 +35,7 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     console.log(`[MeetingsGateway] Client disconnected: ${client.id}`);
     const roomCode = this.socketToRoom.get(client.id);
     if (roomCode) {
+      // Clean up from main room
       const room = this.rooms.get(roomCode);
       if (room) {
         let disconnectedParticipant: Participant | undefined;
@@ -51,7 +54,107 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
           this.rooms.delete(roomCode);
         }
       }
+
+      // Clean up from waiting room
+      const waitingRoom = this.waitingRooms.get(roomCode);
+      if (waitingRoom) {
+        waitingRoom.forEach((p) => {
+          if (p.socketId === client.id) {
+            waitingRoom.delete(p);
+          }
+        });
+        if (waitingRoom.size === 0) {
+          this.waitingRooms.delete(roomCode);
+        }
+      }
+
       this.socketToRoom.delete(client.id);
+    }
+  }
+
+  @SubscribeMessage('request-join')
+  handleRequestJoin(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomCode: string; userId: string; userName: string },
+  ) {
+    const { roomCode, userId, userName } = payload;
+    this.socketToRoom.set(client.id, roomCode);
+
+    if (!this.waitingRooms.has(roomCode)) {
+      this.waitingRooms.set(roomCode, new Set());
+    }
+
+    const participant = { userId, userName, socketId: client.id };
+    this.waitingRooms.get(roomCode)!.add(participant);
+
+    // Emit to room (host will listen)
+    this.server.to(roomCode).emit('guest-waiting', participant);
+  }
+
+  @SubscribeMessage('admit-guest')
+  handleAdmitGuest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomCode: string; targetSocketId: string },
+  ) {
+    const { roomCode, targetSocketId } = payload;
+    
+    // Find and remove from waiting room
+    const waitingRoom = this.waitingRooms.get(roomCode);
+    if (waitingRoom) {
+      waitingRoom.forEach((p) => {
+        if (p.socketId === targetSocketId) {
+          waitingRoom.delete(p);
+        }
+      });
+    }
+
+    // Tell the guest they are admitted
+    this.server.to(targetSocketId).emit('admitted');
+  }
+
+  @SubscribeMessage('reject-guest')
+  handleRejectGuest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomCode: string; targetSocketId: string },
+  ) {
+    const { roomCode, targetSocketId } = payload;
+    
+    // Find and remove from waiting room
+    const waitingRoom = this.waitingRooms.get(roomCode);
+    if (waitingRoom) {
+      waitingRoom.forEach((p) => {
+        if (p.socketId === targetSocketId) {
+          waitingRoom.delete(p);
+        }
+      });
+    }
+
+    this.server.to(targetSocketId).emit('rejected');
+  }
+
+  @SubscribeMessage('kick-participant')
+  handleKickParticipant(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: { roomCode: string; targetSocketId: string },
+  ) {
+    const { roomCode, targetSocketId } = payload;
+    
+    // Tell the participant they are kicked
+    this.server.to(targetSocketId).emit('kicked');
+    
+    // The client will disconnect on its own, which triggers user-left automatically,
+    // but we can also manually emit user-left to others right away for responsiveness
+    const room = this.rooms.get(roomCode);
+    if (room) {
+      let kickedUserId: string | undefined;
+      room.forEach((p) => {
+        if (p.socketId === targetSocketId) {
+          kickedUserId = p.userId;
+        }
+      });
+      if (kickedUserId) {
+        this.server.to(roomCode).emit('user-left', { userId: kickedUserId });
+      }
     }
   }
 
@@ -126,7 +229,7 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @MessageBody() payload: { roomCode: string; userId: string },
   ) {
     client.leave(payload.roomCode);
-    this.handleDisconnect(client); // Reuse disconnect logic to clean up Maps and emit user-left
+    this.handleDisconnect(client);
   }
 
   @SubscribeMessage('end-meeting')
@@ -134,7 +237,6 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { roomCode: string; hostId: string },
   ) {
-    // In a real app, verify if hostId is the actual host of the meeting.
     this.server.to(payload.roomCode).emit('meeting-ended');
   }
 
@@ -143,7 +245,6 @@ export class MeetingsGateway implements OnGatewayConnection, OnGatewayDisconnect
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: { roomCode: string; speaker: string; text: string; timestampMs: number },
   ) {
-    // Broadcast to everyone else in the room
-    client.to(payload.roomCode).emit('transcript-line', payload);
+    this.server.to(payload.roomCode).emit('transcript-line', payload);
   }
 }

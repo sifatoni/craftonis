@@ -47,8 +47,13 @@ export default function DashboardLayout({
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar />
-        <main className="flex-1 overflow-y-auto p-6">
-          {children}
+        <main className="flex-1 overflow-y-auto p-6 flex flex-col">
+          <div className="flex-1">
+            {children}
+          </div>
+          <footer className="mt-8 py-3 border-t border-gray-800 text-center">
+            <p className="text-xs text-gray-500">© 2026 Craftonis. All rights reserved.</p>
+          </footer>
         </main>
       </div>
     </div>

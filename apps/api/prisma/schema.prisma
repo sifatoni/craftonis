@@ -82,6 +82,7 @@ model Department {
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
   jobs      Job[]
   employees Employee[]
+  meetings  Meeting[]
 
   @@unique([tenantId, name])
   @@map("departments")
@@ -205,6 +206,11 @@ model Meeting {
   hostId      String
   roomCode    String        @unique @default(uuid())
   title       String?
+  scheduledFor  DateTime?
+  meetingType   String?
+  clientName    String?
+  departmentId  String?
+  participants  Json?
   startedAt   DateTime?
   endedAt     DateTime?
   recordingUrl String?
@@ -212,6 +218,7 @@ model Meeting {
   createdAt   DateTime      @default(now())
 
   tenant      Tenant        @relation(fields: [tenantId], references: [id])
+  department  Department?   @relation(fields: [departmentId], references: [id])
   transcripts Transcript[]
   minutes     MeetingMinutes?
 
@@ -246,6 +253,9 @@ model MeetingMinutes {
   summary     String?
   decisions   Json?
   actionItems Json?
+  keyPoints   Json?
+  nextSteps   String?
+  sentiment   String?
   approved    Boolean  @default(false)
   approvedAt  DateTime?
   createdAt   DateTime @default(now())

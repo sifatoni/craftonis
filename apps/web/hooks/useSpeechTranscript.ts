@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { api } from '@/lib/axios';
+'use client';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Socket } from 'socket.io-client';
+import { api } from '@/lib/axios';
 
 interface TranscriptLine {
   id: string;
@@ -8,114 +9,176 @@ interface TranscriptLine {
   text: string;
   timestampMs: number;
   flagged: boolean;
-  isTemp?: boolean;
 }
 
-export function useSpeechTranscript(meetingId: string | undefined, roomCode: string, userName: string, socket: Socket | null) {
-  const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
-  const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
-  const startTimeRef = useRef<number>(Date.now());
-  const unsavedBatchRef = useRef<TranscriptLine[]>([]);
+interface UseSpeechTranscriptParams {
+  roomCode: string;
+  meetingId: string;
+  userName: string;
+  socket: Socket | null;
+  isHost: boolean;
+}
 
+export function useSpeechTranscript({
+  roomCode,
+  meetingId,
+  userName,
+  socket,
+  isHost,
+}: UseSpeechTranscriptParams) {
+  const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunkIndexRef = useRef(0);
+  const lastWordsRef = useRef('');
+  const isRecordingRef = useRef(false);
+  const overlapBufferRef = useRef<Blob[]>([]);
+  const CHUNK_DURATION_MS = 60000; // 60 seconds
+
+  // Listen for transcript lines from other participants via socket
   useEffect(() => {
     if (!socket) return;
-
-    socket.on('transcript-line', (line: TranscriptLine) => {
-      setTranscript(prev => [...prev, { ...line, isTemp: true, id: Math.random().toString() }]);
-    });
-
-    return () => {
-      socket.off('transcript-line');
+    
+    const handleTranscriptLine = (data: { speaker: string; text: string; timestampMs: number }) => {
+      if (!data.text.trim()) return;
+      setTranscript(prev => [...prev, {
+        id: `${data.speaker}-${data.timestampMs}`,
+        speaker: data.speaker,
+        text: data.text,
+        timestampMs: data.timestampMs,
+        flagged: false,
+      }]);
     };
+
+    socket.on('transcript-line', handleTranscriptLine);
+    return () => { socket.off('transcript-line', handleTranscriptLine); };
   }, [socket]);
 
-  useEffect(() => {
-    // Auto-batch every 10 seconds
-    const interval = setInterval(async () => {
-      if (unsavedBatchRef.current.length > 0 && meetingId) {
-        const batch = [...unsavedBatchRef.current];
-        unsavedBatchRef.current = [];
-        try {
-          await api.post(`/meetings/${meetingId}/transcripts`, { items: batch });
-        } catch (err) {
-          console.error('Failed to save transcript batch', err);
-          unsavedBatchRef.current = [...batch, ...unsavedBatchRef.current]; // restore on fail
-        }
-      }
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [meetingId]);
-
-  const toggleListening = useCallback(() => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
+  const sendChunk = useCallback(async (chunks: Blob[], mimeType: string) => {
+    if (chunks.length === 0) return;
+    
+    const audioBlob = new Blob(chunks, { type: mimeType });
+    if (audioBlob.size < 1000) return; // skip tiny/silent chunks
+    
+    const formData = new FormData();
+    const ext = mimeType.includes('webm') ? 'webm' : mimeType.includes('mp4') ? 'mp4' : 'webm';
+    formData.append('audio', audioBlob, `chunk_${chunkIndexRef.current}.${ext}`);
+    formData.append('speaker', userName);
+    formData.append('roomCode', roomCode);
+    formData.append('chunkIndex', String(chunkIndexRef.current));
+    if (lastWordsRef.current) {
+      formData.append('previousWords', lastWordsRef.current);
     }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.warn('Speech recognition not supported in this browser');
-      return;
-    }
-
-    recognitionRef.current = new SpeechRecognition();
-    recognitionRef.current.continuous = true;
-    recognitionRef.current.interimResults = false;
-
-    recognitionRef.current.onresult = (event: any) => {
-      const lastResultIndex = event.results.length - 1;
-      const text = event.results[lastResultIndex][0].transcript;
-      
-      const newLine: TranscriptLine = {
-        id: Math.random().toString(),
-        speaker: userName,
-        text,
-        timestampMs: Date.now() - startTimeRef.current,
-        flagged: false,
-        isTemp: true,
-      };
-
-      setTranscript(prev => [...prev, newLine]);
-      unsavedBatchRef.current.push(newLine);
-
-      if (socket) {
-        socket.emit('transcript-line', { roomCode, speaker: userName, text, timestampMs: newLine.timestampMs });
-      }
-    };
-
-    recognitionRef.current.onend = () => {
-      if (isListening) {
-        // Auto-restart if it disconnected while we still want to listen
-        try {
-          recognitionRef.current.start();
-        } catch (e) {
-          setIsListening(false);
-        }
-      }
-    };
-
-    recognitionRef.current.start();
-    setIsListening(true);
-  }, [isListening, userName, socket, roomCode]);
-
-  const toggleBookmark = async (transcriptId: string, index: number) => {
-    setTranscript(prev => {
-      const copy = [...prev];
-      copy[index] = { ...copy[index], flagged: !copy[index].flagged };
-      return copy;
-    });
-
+    
+    chunkIndexRef.current++;
+    
     try {
-      // In a real scenario, we'd ensure it's saved in DB first or we'd bookmark the actual DB ID.
-      // Since we use temp IDs until fetched, this is a simplified stub.
-      // await api.put(`/meetings/transcripts/${transcriptId}/bookmark`);
+      const response = await api.post(`/meetings/${meetingId}/transcribe-chunk`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      
+      const result = response.data;
+      if (result.text) {
+        // Update last words for next chunk context
+        const words = result.text.split(' ');
+        lastWordsRef.current = words.slice(-10).join(' ');
+      }
     } catch (err) {
-      console.error('Failed to bookmark transcript', err);
+      console.error('[Transcript] Chunk send failed:', err);
     }
-  };
+  }, [roomCode, meetingId, userName]);
 
-  return { transcript, isListening, toggleListening, toggleBookmark };
+  const startRecording = useCallback(async () => {
+    if (isRecordingRef.current) return;
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
+      // Determine best supported mime type
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? 'audio/mp4'
+        : 'audio/ogg';
+      
+      const startNewRecorder = () => {
+        if (!streamRef.current) return;
+        
+        chunksRef.current = [...overlapBufferRef.current]; // start with overlap
+        overlapBufferRef.current = [];
+        
+        const recorder = new MediaRecorder(streamRef.current, { mimeType });
+        mediaRecorderRef.current = recorder;
+        
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) {
+            chunksRef.current.push(e.data);
+          }
+        };
+        
+        recorder.onstop = async () => {
+          const chunksToSend = [...chunksRef.current];
+          // Save last 3 seconds as overlap for next chunk
+          const overlapChunks = chunksToSend.slice(-2);
+          overlapBufferRef.current = overlapChunks;
+          
+          await sendChunk(chunksToSend, mimeType);
+          
+          // Start next recorder if still recording
+          if (isRecordingRef.current) {
+            startNewRecorder();
+          }
+        };
+        
+        recorder.start(1000); // collect data every 1 second
+        
+        // Stop after 60 seconds to send chunk
+        setTimeout(() => {
+          if (recorder.state === 'recording') {
+            recorder.stop();
+          }
+        }, CHUNK_DURATION_MS);
+      };
+      
+      isRecordingRef.current = true;
+      startNewRecorder();
+      
+    } catch (err) {
+      console.error('[Transcript] Microphone access failed:', err);
+    }
+  }, [sendChunk]);
+
+  const stopRecording = useCallback(() => {
+    isRecordingRef.current = false;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+  }, []);
+
+  // Auto-start recording on mount (silently for all participants)
+  useEffect(() => {
+    startRecording();
+    return () => { stopRecording(); };
+  }, [startRecording, stopRecording]);
+
+  const toggleBookmark = useCallback(async (transcriptId: string) => {
+    setTranscript(prev => prev.map(t => 
+      t.id === transcriptId ? { ...t, flagged: !t.flagged } : t
+    ));
+    try {
+      await api.put(`/meetings/transcripts/${transcriptId}/bookmark`);
+    } catch (err) {
+      console.error('[Transcript] Bookmark failed:', err);
+    }
+  }, []);
+
+  return { transcript, toggleBookmark };
 }

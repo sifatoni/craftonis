@@ -3,31 +3,119 @@
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useUiStore } from '@/store/ui.store'
 import {
   LayoutDashboard, Radar, Briefcase, FileSearch, KanbanSquare,
-  Code2, Video, FileText, Bot, Users, Settings, ChevronLeft,
+  Code2, Video, Bot, Users, Settings, ChevronLeft,
+  ChevronDown
 } from 'lucide-react'
+
+const hiringManagerRoutes = ['/jobs', '/jobs-pipeline', '/cv-scoring', '/interviews', '/onboarding']
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/leads', icon: Radar, label: 'Lead Generation' },
-  { href: '/jobs', icon: Briefcase, label: 'Job Board' },
-  { href: '/jobs-pipeline', icon: KanbanSquare, label: 'Pipeline Board' },
-  { href: '/cv-scoring', icon: FileSearch, label: 'CV Scoring' },
-  { href: '/interviews', icon: Code2, label: 'Interviews' },
+  { 
+    id: 'hiring-manager',
+    label: 'Hiring Manager',
+    icon: Briefcase,
+    children: [
+      { href: '/jobs', icon: Briefcase, label: 'Job Board' },
+      { href: '/jobs-pipeline', icon: KanbanSquare, label: 'Pipeline Board' },
+      { href: '/cv-scoring', icon: FileSearch, label: 'CV Scoring' },
+      { href: '/interviews', icon: Code2, label: 'Interviews' },
+      { href: '/onboarding', icon: Bot, label: 'AI Onboarding' },
+    ]
+  },
   { href: '/meeting-ledger', icon: Video, label: 'Meeting Ledger' },
-  { href: '/minutes', icon: FileText, label: 'Meeting Minutes' },
-  { href: '/onboarding', icon: Bot, label: 'AI Onboarding' },
   { href: '/hrm', icon: Users, label: 'HRM' },
-  { href: '/settings', icon: Settings, label: 'Settings' },
 ]
+
+interface NavItemProps {
+  href: string
+  icon: any
+  label: string
+  isActive: boolean
+  sidebarCollapsed: boolean
+  isChild?: boolean
+}
+
+function NavItem({ href, icon: Icon, label, isActive, sidebarCollapsed, isChild }: NavItemProps) {
+  return (
+    <Link href={href}>
+      <div
+        className={cn(
+          'relative flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg mb-0.5 cursor-pointer transition-colors group',
+          isActive ? 'bg-white/5' : 'hover:bg-white/5',
+          isChild && 'ml-6 py-2'
+        )}
+      >
+        {isActive && (
+          <motion.div
+            layoutId={isChild ? "activeNavChild" : "activeNav"}
+            className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full"
+            style={{ background: '#A50000' }}
+            transition={{ duration: 0.2 }}
+          />
+        )}
+
+        <Icon
+          size={isChild ? 16 : 20}
+          className="flex-shrink-0"
+          style={{ color: isActive ? '#A50000' : isChild ? '#404040' : '#606060' }}
+        />
+
+        <AnimatePresence>
+          {!sidebarCollapsed && (
+            <motion.span
+              initial={{ opacity: 0, width: 0 }}
+              animate={{ opacity: 1, width: 'auto' }}
+              exit={{ opacity: 0, width: 0 }}
+              transition={{ duration: 0.15 }}
+              className={cn("font-medium whitespace-nowrap overflow-hidden", isChild ? "text-sm" : "text-sm")}
+              style={{ color: isActive ? '#FFFFFF' : isChild ? '#808080' : '#A0A0A0' }}
+            >
+              {label}
+            </motion.span>
+          )}
+        </AnimatePresence>
+
+        {sidebarCollapsed && (
+          <div
+            className="absolute left-full ml-2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+            style={{
+              background: '#1A1A1A',
+              color: '#FFFFFF',
+              border: '1px solid #2E2E2E',
+            }}
+          >
+            {label}
+          </div>
+        )}
+      </div>
+    </Link>
+  )
+}
 
 export function Sidebar() {
   const pathname = usePathname()
   const { sidebarCollapsed, toggleSidebar } = useUiStore()
+  const [isHiringManagerOpen, setIsHiringManagerOpen] = useState(false)
+
+  useEffect(() => {
+    if (hiringManagerRoutes.some(route => pathname === route || pathname.startsWith(route))) {
+      setIsHiringManagerOpen(true)
+    }
+  }, [pathname])
+
+  const isHiringManagerActive = hiringManagerRoutes.some(route => 
+    pathname === route || pathname.startsWith(route)
+  )
+
+  const isSettingsActive = pathname === '/settings' || pathname.startsWith('/settings')
 
   return (
     <motion.aside
@@ -73,71 +161,124 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden">
+      <nav className="flex-1 py-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
         {navItems.map((item) => {
-          const isActive = pathname === item.href ||
-            (item.href !== '/dashboard' && pathname.startsWith(item.href))
-          const Icon = item.icon
+          if ('children' in item) {
+            const Icon = item.icon
+            return (
+              <div key={item.id} className="mb-0.5">
+                <div
+                  onClick={() => !sidebarCollapsed && setIsHiringManagerOpen(!isHiringManagerOpen)}
+                  className={cn(
+                    'relative flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors group',
+                    isHiringManagerActive ? 'bg-white/5' : 'hover:bg-white/5'
+                  )}
+                >
+                  {isHiringManagerActive && (
+                    <motion.div
+                      layoutId="activeNavGroup"
+                      className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full"
+                      style={{ background: '#A50000' }}
+                      transition={{ duration: 0.2 }}
+                    />
+                  )}
 
-          return (
-            <Link key={item.href} href={item.href}>
-              <div
-                className={cn(
-                  'relative flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg mb-0.5 cursor-pointer transition-colors group',
-                  isActive
-                    ? 'bg-crimson-dark'
-                    : 'hover:bg-white/5'
-                )}
-              >
-                {/* Active indicator */}
-                {isActive && (
-                  <motion.div
-                    layoutId="activeNav"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full"
-                    style={{ background: '#A50000' }}
-                    transition={{ duration: 0.2 }}
+                  <Icon
+                    size={20}
+                    className="flex-shrink-0"
+                    style={{ color: isHiringManagerActive ? '#A50000' : '#606060' }}
                   />
-                )}
 
-                <Icon
-                  size={20}
-                  className="flex-shrink-0"
-                  style={{ color: isActive ? '#A50000' : '#606060' }}
-                />
+                  <AnimatePresence>
+                    {!sidebarCollapsed && (
+                      <motion.div
+                        initial={{ opacity: 0, width: 0 }}
+                        animate={{ opacity: 1, width: 'auto' }}
+                        exit={{ opacity: 0, width: 0 }}
+                        className="flex-1 flex items-center justify-between overflow-hidden"
+                      >
+                        <span 
+                          className="text-sm font-medium whitespace-nowrap"
+                          style={{ color: isHiringManagerActive ? '#FFFFFF' : '#A0A0A0' }}
+                        >
+                          {item.label}
+                        </span>
+                        <motion.div
+                          animate={{ rotate: isHiringManagerOpen ? 180 : 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <ChevronDown size={14} style={{ color: '#606060' }} />
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
-                <AnimatePresence>
-                  {!sidebarCollapsed && (
-                    <motion.span
-                      initial={{ opacity: 0, width: 0 }}
-                      animate={{ opacity: 1, width: 'auto' }}
-                      exit={{ opacity: 0, width: 0 }}
-                      transition={{ duration: 0.15 }}
-                      className="text-sm font-medium whitespace-nowrap overflow-hidden"
-                      style={{ color: isActive ? '#FFFFFF' : '#A0A0A0' }}
+                  {sidebarCollapsed && (
+                    <div
+                      className="absolute left-full ml-2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+                      style={{ background: '#1A1A1A', color: '#FFFFFF', border: '1px solid #2E2E2E' }}
                     >
                       {item.label}
-                    </motion.span>
+                    </div>
+                  )}
+                </div>
+
+                <AnimatePresence initial={false}>
+                  {isHiringManagerOpen && !sidebarCollapsed && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      {item.children.map((child) => (
+                        <NavItem
+                          key={child.href}
+                          href={child.href}
+                          icon={child.icon}
+                          label={child.label}
+                          isActive={pathname === child.href}
+                          sidebarCollapsed={sidebarCollapsed}
+                          isChild
+                        />
+                      ))}
+                    </motion.div>
                   )}
                 </AnimatePresence>
-
-                {/* Tooltip when collapsed */}
-                {sidebarCollapsed && (
-                  <div
-                    className="absolute left-full ml-2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
-                    style={{
-                      background: '#1A1A1A',
-                      color: '#FFFFFF',
-                      border: '1px solid #2E2E2E',
-                    }}
-                  >
-                    {item.label}
-                  </div>
-                )}
               </div>
-            </Link>
+            )
+          }
+
+          const isActive = pathname === item.href ||
+            (item.href !== '/dashboard' && pathname.startsWith(item.href) && !hiringManagerRoutes.includes(item.href))
+
+          return (
+            <NavItem
+              key={item.href}
+              href={item.href}
+              icon={item.icon}
+              label={item.label}
+              isActive={isActive}
+              sidebarCollapsed={sidebarCollapsed}
+            />
           )
         })}
       </nav>
+
+      {/* Bottom Section */}
+      <div 
+        className="mt-auto border-t flex-shrink-0 py-2"
+        style={{ borderColor: '#1A1A1A' }}
+      >
+        <NavItem
+          href="/settings"
+          icon={Settings}
+          label="Settings"
+          isActive={isSettingsActive}
+          sidebarCollapsed={sidebarCollapsed}
+        />
+      </div>
 
       {/* Collapse toggle */}
       <div
@@ -163,3 +304,5 @@ export function Sidebar() {
     </motion.aside>
   )
 }
+
+

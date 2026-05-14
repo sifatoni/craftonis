@@ -94,13 +94,14 @@ export default function LoginPage() {
             className="text-5xl font-bold mb-6 leading-tight"
             style={{ fontFamily: 'var(--font-syne)', color: '#FFFFFF' }}
           >
-            Hire Smart.<br />
-            Manage Better.<br />
-            <span style={{ color: '#A50000' }}>Grow Faster.</span>
+            Intelligence.<br />
+            Automation.<br />
+            <span style={{ color: '#A50000' }}>Workspace.</span>
           </h1>
           <p style={{ color: '#606060', fontSize: '1.1rem', lineHeight: '1.7' }}>
-            The all-in-one HR intelligence platform for modern teams.
-            From lead generation to onboarding — everything in one place.
+            Craftonis brings lead gen, hiring, interviews,<br />
+            meetings, onboarding and HR management<br />
+            into a single <span style={{ color: '#c41e3a' }}>AI-powered</span> workspace.
           </p>
         </motion.div>
 
@@ -108,8 +109,8 @@ export default function LoginPage() {
         <div className="relative z-10 flex gap-8">
           {[
             { value: '10', label: 'Modules' },
-            { value: '70%', label: 'Faster Hiring' },
-            { value: '0', label: '3rd Party Tools' },
+            { value: '7', label: 'Tools Replaced' },
+            { value: 'AI', label: 'Powered' },
           ].map((stat) => (
             <div key={stat.label}>
               <div
