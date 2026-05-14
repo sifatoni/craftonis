@@ -60,7 +60,7 @@ export class InterviewsService {
       candidateId: dto.candidateId,
       interviewerId,
       jobId,
-      type: dto.type,
+      types: dto.types,
       scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt) : null,
       status: 'SCHEDULED',
       notes: dto.notes,
@@ -86,7 +86,7 @@ export class InterviewsService {
           candidateEmail: candidate.email,
           candidateName: candidate.name,
           companyName: tenant?.name || 'Craftonis',
-          interviewType: interview.type,
+          interviewType: Array.isArray(interview.types) ? interview.types.join(', ') : 'Interview',
           scheduledAt: interview.scheduledAt,
           notes: interview.notes || undefined,
           interviewerName: interviewer?.name,
@@ -109,7 +109,7 @@ export class InterviewsService {
     }
 
     const data: any = {}
-    if (dto.type !== undefined) data.type = dto.type
+    if (dto.types !== undefined) data.types = dto.types
     if (dto.scheduledAt !== undefined) data.scheduledAt = new Date(dto.scheduledAt)
     if (dto.notes !== undefined) data.notes = dto.notes
 

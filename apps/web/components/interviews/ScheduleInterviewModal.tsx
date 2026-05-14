@@ -46,7 +46,7 @@ export function ScheduleInterviewModal({
   const qc = useQueryClient()
   const [jobId, setJobId] = useState(preselectedJobId || '')
   const [candidateId, setCandidateId] = useState(preselectedCandidateId || '')
-  const [type, setType] = useState<InterviewType>('GENERAL')
+  const [types, setTypes] = useState<InterviewType[]>(['GENERAL'])
   const [scheduledAt, setScheduledAt] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -55,7 +55,7 @@ export function ScheduleInterviewModal({
     if (!open) return
     setJobId(preselectedJobId || '')
     setCandidateId(preselectedCandidateId || '')
-    setType('GENERAL')
+    setTypes(['GENERAL'])
     setScheduledAt('')
     setNotes('')
   }, [open, preselectedJobId, preselectedCandidateId])
@@ -92,7 +92,7 @@ export function ScheduleInterviewModal({
     onError: (err: any) => toast.error(err.response?.data?.message || 'Failed to schedule'),
   })
 
-  const canSubmit = !!candidateId && !schedule.isPending
+  const canSubmit = !!candidateId && types.length > 0 && !schedule.isPending
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -171,12 +171,16 @@ export function ScheduleInterviewModal({
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setType(value)}
+                  onClick={() => {
+                    setTypes(prev => 
+                      prev.includes(value) ? prev.filter(t => t !== value) : [...prev, value]
+                    )
+                  }}
                   className="flex items-center gap-2 p-3 rounded-lg border transition-all"
                   style={{
-                    background: type === value ? '#1A0000' : '#0A0A0A',
-                    borderColor: type === value ? '#A50000' : '#2E2E2E',
-                    color: type === value ? '#FFFFFF' : '#A0A0A0',
+                    background: types.includes(value) ? '#1A0000' : '#0A0A0A',
+                    borderColor: types.includes(value) ? '#A50000' : '#2E2E2E',
+                    color: types.includes(value) ? '#FFFFFF' : '#A0A0A0',
                   }}
                 >
                   <Icon size={14} />
@@ -220,7 +224,7 @@ export function ScheduleInterviewModal({
               onClick={() => schedule.mutate({
                 candidateId,
                 jobId: jobId || undefined,
-                type,
+                types,
                 scheduledAt: scheduledAt || undefined,
                 notes: notes || undefined,
               })}

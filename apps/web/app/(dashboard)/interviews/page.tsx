@@ -114,7 +114,7 @@ function useQuestions(type: string) {
 function ScheduleModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient()
   const [candidateId, setCandidateId] = useState('')
-  const [type, setType] = useState<'GENERAL' | 'BEHAVIORAL' | 'TECHNICAL'>('GENERAL')
+  const [types, setTypes] = useState<Array<'GENERAL' | 'BEHAVIORAL' | 'TECHNICAL'>>(['GENERAL'])
   const [scheduledAt, setScheduledAt] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -173,12 +173,16 @@ function ScheduleModal({ open, onClose }: { open: boolean; onClose: () => void }
               {(['GENERAL', 'BEHAVIORAL', 'TECHNICAL'] as const).map(t => (
                 <button
                   key={t}
-                  onClick={() => setType(t)}
+                  onClick={() => {
+                    setTypes(prev => 
+                      prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
+                    )
+                  }}
                   className="flex items-center gap-2 p-3 rounded-lg border transition-all"
                   style={{
-                    background: type === t ? '#1A0000' : '#0A0A0A',
-                    borderColor: type === t ? '#A50000' : '#2E2E2E',
-                    color: type === t ? '#FFFFFF' : '#A0A0A0',
+                    background: types.includes(t) ? '#1A0000' : '#0A0A0A',
+                    borderColor: types.includes(t) ? '#A50000' : '#2E2E2E',
+                    color: types.includes(t) ? '#FFFFFF' : '#A0A0A0',
                   }}
                 >
                   {t === 'GENERAL' ? <Calendar size={14} /> : t === 'BEHAVIORAL' ? <MessageSquare size={14} /> : <Code2 size={14} />}
@@ -217,8 +221,8 @@ function ScheduleModal({ open, onClose }: { open: boolean; onClose: () => void }
               Cancel
             </Button>
             <Button
-              onClick={() => schedule.mutate({ candidateId, type, scheduledAt: scheduledAt || undefined, notes })}
-              disabled={!candidateId || schedule.isPending}
+              onClick={() => schedule.mutate({ candidateId, types, scheduledAt: scheduledAt || undefined, notes })}
+              disabled={!candidateId || types.length === 0 || schedule.isPending}
               className="flex-1 h-10"
               style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}
             >
@@ -234,7 +238,7 @@ function ScheduleModal({ open, onClose }: { open: boolean; onClose: () => void }
 // ── Edit Interview Modal ───────────────────────────────────
 function EditInterviewModal({ interview, onClose }: { interview: any; onClose: () => void }) {
   const qc = useQueryClient()
-  const [type, setType] = useState<'GENERAL' | 'BEHAVIORAL' | 'TECHNICAL'>(interview.type)
+  const [types, setTypes] = useState<Array<'GENERAL' | 'BEHAVIORAL' | 'TECHNICAL'>>(interview.types || ['GENERAL'])
   const [scheduledAt, setScheduledAt] = useState<string>(
     interview.scheduledAt ? new Date(interview.scheduledAt).toISOString().slice(0, 16) : ''
   )
@@ -272,12 +276,17 @@ function EditInterviewModal({ interview, onClose }: { interview: any; onClose: (
             <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>INTERVIEW TYPE</Label>
             <div className="grid grid-cols-3 gap-2">
               {(['GENERAL', 'BEHAVIORAL', 'TECHNICAL'] as const).map(t => (
-                <button key={t} onClick={() => setType(t)}
+                <button key={t} 
+                  onClick={() => {
+                    setTypes(prev => 
+                      prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]
+                    )
+                  }}
                   className="flex items-center gap-2 p-3 rounded-lg border transition-all"
                   style={{
-                    background: type === t ? '#1A0000' : '#0A0A0A',
-                    borderColor: type === t ? '#A50000' : '#2E2E2E',
-                    color: type === t ? '#FFFFFF' : '#A0A0A0',
+                    background: types.includes(t) ? '#1A0000' : '#0A0A0A',
+                    borderColor: types.includes(t) ? '#A50000' : '#2E2E2E',
+                    color: types.includes(t) ? '#FFFFFF' : '#A0A0A0',
                   }}
                 >
                   {t === 'GENERAL' ? <Calendar size={14} /> : t === 'BEHAVIORAL' ? <MessageSquare size={14} /> : <Code2 size={14} />}
@@ -302,7 +311,7 @@ function EditInterviewModal({ interview, onClose }: { interview: any; onClose: (
               style={{ borderColor: '#2E2E2E', color: '#A0A0A0', background: 'transparent' }}>
               Cancel
             </Button>
-            <Button onClick={() => update.mutate({ type, scheduledAt: scheduledAt || undefined })}
+            <Button onClick={() => update.mutate({ types, scheduledAt: scheduledAt || undefined })}
               disabled={update.isPending} className="flex-1 h-10"
               style={{ background: '#A50000', color: '#FFFFFF', border: 'none' }}>
               {update.isPending ? <Loader2 size={16} className="animate-spin" /> : 'Save Changes'}
@@ -317,7 +326,7 @@ function EditInterviewModal({ interview, onClose }: { interview: any; onClose: (
 // ── Interview Session ──────────────────────────────────────
 function InterviewSession({ interview, onClose }: { interview: any; onClose: () => void }) {
   const qc = useQueryClient()
-  const [mode, setMode] = useState<'GENERAL' | 'BEHAVIORAL' | 'TECHNICAL'>(interview.type)
+  const [mode, setMode] = useState<'GENERAL' | 'BEHAVIORAL' | 'TECHNICAL'>(interview.types?.[0] || 'GENERAL')
   const [currentQ, setCurrentQ] = useState(0)
   const [ratings, setRatings] = useState<Record<string, number>>({})
   const [notes, setNotes] = useState(interview.notes || '')
@@ -380,7 +389,7 @@ function InterviewSession({ interview, onClose }: { interview: any; onClose: () 
           </div>
 
           <div className="flex rounded-lg p-1 gap-1" style={{ background: '#0A0A0A', border: '1px solid #1A1A1A' }}>
-            {(['GENERAL', 'BEHAVIORAL', 'TECHNICAL'] as const).map(m => (
+            {(interview.types || ['GENERAL']).map((m: any) => (
               <button key={m} onClick={() => { setMode(m); setCurrentQ(0) }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
                 style={{ background: mode === m ? '#A50000' : 'transparent', color: mode === m ? '#FFFFFF' : '#606060' }}
@@ -631,17 +640,22 @@ function InterviewCard({ interview, onStart }: { interview: any; onStart: (i: an
         </div>
 
         <div className="flex items-center gap-4 mt-3">
-          <div className="flex items-center gap-1.5">
-            {interview.type === 'GENERAL' ? (
-              <Calendar size={13} style={{ color: '#D97706' }} />
-            ) : interview.type === 'TECHNICAL' ? (
-              <Code2 size={13} style={{ color: '#5521B5' }} />
-            ) : (
-              <MessageSquare size={13} style={{ color: '#0284C7' }} />
-            )}
-            <span className="text-xs" style={{ color: '#A0A0A0' }}>
-              {interview.type === 'GENERAL' ? 'General' : interview.type === 'TECHNICAL' ? 'Technical' : 'Behavioral'}
-            </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {interview.types?.map((t: string, i: number) => (
+              <div key={t} className="flex items-center gap-1.5">
+                {i > 0 && <span className="text-xs" style={{ color: '#606060' }}>·</span>}
+                {t === 'GENERAL' ? (
+                  <Calendar size={13} style={{ color: '#D97706' }} />
+                ) : t === 'TECHNICAL' ? (
+                  <Code2 size={13} style={{ color: '#5521B5' }} />
+                ) : (
+                  <MessageSquare size={13} style={{ color: '#0284C7' }} />
+                )}
+                <span className="text-xs" style={{ color: '#A0A0A0' }}>
+                  {t === 'GENERAL' ? 'General' : t === 'TECHNICAL' ? 'Technical' : 'Behavioral'}
+                </span>
+              </div>
+            ))}
           </div>
 
           {interview.scheduledAt && (

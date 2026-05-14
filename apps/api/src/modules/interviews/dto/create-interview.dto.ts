@@ -12,9 +12,9 @@ export class CreateInterviewDto {
   @IsUUID()
   jobId?: string
 
-  @ApiProperty({ enum: InterviewType })
-  @IsEnum(InterviewType)
-  type!: InterviewType
+  @ApiProperty({ type: [String], enum: InterviewType, isArray: true })
+  @IsEnum(InterviewType, { each: true })
+  types!: InterviewType[]
 
   @ApiPropertyOptional()
   @IsOptional()

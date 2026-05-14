@@ -184,7 +184,7 @@ export class AnalyticsService {
           take: 5,
           select: {
             id: true,
-            type: true,
+            types: true,
             status: true,
             scheduledAt: true,
             createdAt: true,
@@ -232,7 +232,7 @@ export class AnalyticsService {
         type: 'INTERVIEW',
         icon: 'calendar',
         color: 'purple',
-        message: `Interview scheduled — ${i.candidate.name} (${i.type})`,
+        message: `Interview scheduled — ${i.candidate.name} (${Array.isArray(i.types) ? i.types.join(', ') : 'Interview'})`,
         timestamp: i.createdAt,
         refId: i.id,
       }),

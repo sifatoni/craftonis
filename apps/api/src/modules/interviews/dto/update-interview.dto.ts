@@ -3,10 +3,10 @@ import { ApiPropertyOptional } from '@nestjs/swagger'
 import { InterviewType } from '@prisma/client'
 
 export class UpdateInterviewDto {
-  @ApiPropertyOptional({ enum: InterviewType })
+  @ApiPropertyOptional({ type: [String], enum: InterviewType, isArray: true })
   @IsOptional()
-  @IsEnum(InterviewType)
-  type?: InterviewType
+  @IsEnum(InterviewType, { each: true })
+  types?: InterviewType[]
 
   @ApiPropertyOptional()
   @IsOptional()

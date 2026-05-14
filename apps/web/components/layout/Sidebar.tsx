@@ -18,7 +18,7 @@ const navItems = [
   { href: '/jobs-pipeline', icon: KanbanSquare, label: 'Pipeline Board' },
   { href: '/cv-scoring', icon: FileSearch, label: 'CV Scoring' },
   { href: '/interviews', icon: Code2, label: 'Interviews' },
-  { href: '/meetings', icon: Video, label: 'Meeting Ledger' },
+  { href: '/meeting-ledger', icon: Video, label: 'Meeting Ledger' },
   { href: '/minutes', icon: FileText, label: 'Meeting Minutes' },
   { href: '/onboarding', icon: Bot, label: 'AI Onboarding' },
   { href: '/hrm', icon: Users, label: 'HRM' },

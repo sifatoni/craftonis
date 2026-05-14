@@ -12,6 +12,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { DebugModule } from './modules/debug/debug.module';
 import { InterviewsModule } from './modules/interviews/interviews.module';
 import { QuestionsModule } from './modules/questions/questions.module';
+import { MeetingsModule } from './meetings/meetings.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { QuestionsModule } from './modules/questions/questions.module';
     DebugModule, // ⚠️ TEMPORARY — remove before production
     InterviewsModule,
     QuestionsModule,
+    MeetingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
