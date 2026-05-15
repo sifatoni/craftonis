@@ -237,6 +237,7 @@ function JobFormModal({
         salaryMax: initial?.salaryMax != null ? String(initial.salaryMax) : '',
       })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initial])
 
   const onSubmit = async (data: any) => {
@@ -1044,6 +1045,7 @@ export default function JobsPage() {
         setSelectedCandidate(null)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidates])
 
   const filteredCandidates = stageFilter

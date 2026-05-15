@@ -49,7 +49,7 @@ export default function InterviewResultsPage() {
           <div className="w-16 h-16 border-4 border-[#A50000]/20 border-t-[#A50000] rounded-full" />
         </motion.div>
         <h2 className="text-xl font-semibold mb-2">🤖 Analyzing interview...</h2>
-        <p className="text-[#808080]">This may take a moment. We're processing the transcript and code.</p>
+        <p className="text-[#808080]">This may take a moment. We&apos;re processing the transcript and code.</p>
       </div>
     )
   }

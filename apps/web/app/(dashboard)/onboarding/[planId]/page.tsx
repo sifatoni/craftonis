@@ -441,7 +441,7 @@ export default function OnboardingPlanDetail({ params }: { params: { planId: str
           <div className="bg-[#1e1e1e] border border-white/10 rounded-xl w-full max-w-md shadow-2xl p-6">
             <h2 className="text-xl font-bold text-white mb-2 flex items-center"><Bot className="w-5 h-5 mr-2 text-crimson-400" /> Generate AI Plan</h2>
             <p className="text-sm text-gray-400 mb-6">
-              This will use the candidate's CV, interview assessment, and uploaded documents to create a personalized {plan.durationDays}-day plan. 
+              This will use the candidate&apos;s CV, interview assessment, and uploaded documents to create a personalized {plan.durationDays}-day plan. 
               <span className="text-red-400 block mt-2 font-medium">Warning: This will replace all existing tasks in this plan.</span>
             </p>
             

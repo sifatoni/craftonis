@@ -84,6 +84,7 @@ export default function InterviewRoomPage() {
       }
     }
     fetchRoom()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, searchParams, user])
 
   // Timer
@@ -283,7 +284,7 @@ export default function InterviewRoomPage() {
             <h3 className="text-lg font-medium mb-1">Interview in Progress</h3>
             <p className="text-sm text-[#808080] mb-4">{room?.interview?.job?.title}</p>
             <div className="text-xs text-[#606060] p-4 bg-white/5 rounded-lg">
-              Follow the interviewer's instructions. If this is a technical interview, your coding editor will appear below.
+              Follow the interviewer&apos;s instructions. If this is a technical interview, your coding editor will appear below.
             </div>
           </div>
         ) : (

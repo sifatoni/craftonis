@@ -511,7 +511,7 @@ export default function LeadGenerationPage() {
               <ol className="list-decimal pl-4 space-y-1">
                 <li>Click the button below to open the search engine.</li>
                 <li>Complete the human verification (CAPTCHA).</li>
-                <li>Return here and click "I've Completed Verification".</li>
+                <li>Return here and click &quot;I&apos;ve Completed Verification&quot;.</li>
               </ol>
             </div>
             <div className="flex flex-col gap-2 mt-2">
@@ -527,7 +527,7 @@ export default function LeadGenerationPage() {
                 onClick={solveCaptcha}
                 className="bg-green-600 hover:bg-green-700 py-2 rounded text-sm font-medium transition-colors"
               >
-                ✓ I've Completed Verification
+                ✓ I&apos;ve Completed Verification
               </button>
               <button
                 onClick={solveCaptcha}
