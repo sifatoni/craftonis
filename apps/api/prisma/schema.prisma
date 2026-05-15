@@ -25,7 +25,7 @@ model Tenant {
   candidates    Candidate[]
   meetings      Meeting[]
   leads         Lead[]
-  tokenLedger   TokenLedger[]
+  tokenWallet   TokenWallet?
   subscriptions Subscription[]
   questions     Question[]
   onboardingPlans OnboardingPlan[]
@@ -288,22 +288,31 @@ model MeetingMinutes {
 
 // ── LEADS ──────────────────────────────────────────────────
 model Lead {
-  id          String     @id @default(uuid())
-  tenantId    String
-  name        String?
-  designation String?
-  company     String?
-  email       String?
-  phone       String?
-  linkedinUrl String?
-  score       Int        @default(0)
-  stage       LeadStage  @default(NEW)
-  revealed    Boolean    @default(false)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-
-  tenant      Tenant     @relation(fields: [tenantId], references: [id])
-
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String?
+  designation  String?
+  organization String?
+  email        String?
+  emailType    String?
+  phone        String?
+  linkedinUrl  String?
+  instagramUrl String?
+  facebookUrl  String?
+  profileUrl   String?
+  location     String?
+  area         String?
+  industry     String?
+  snippet      String?
+  platform     String?
+  source       String?
+  contactScore Int      @default(0)
+  valueBand    String   @default("Low")
+  revealed     Boolean  @default(false)
+  crmStage     String   @default("NEW")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
   @@map("leads")
 }
 
@@ -378,22 +387,27 @@ enum LeadStage {
 }
 
 // ── TOKEN LEDGER ───────────────────────────────────────────
-model TokenLedger {
-  id        String          @id @default(uuid())
-  tenantId  String
-  amount    Int
-  type      TokenLedgerType
-  ref       String?
-  createdAt DateTime        @default(now())
-
-  tenant    Tenant          @relation(fields: [tenantId], references: [id])
-
-  @@map("token_ledger")
+model TokenWallet {
+  id        String        @id @default(uuid())
+  tenantId  String        @unique
+  balance   Int           @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  tenant    Tenant        @relation(fields: [tenantId], references: [id])
+  ledger    TokenLedger[]
+  @@map("token_wallets")
 }
 
-enum TokenLedgerType {
-  CREDIT
-  DEBIT
+model TokenLedger {
+  id          String      @id @default(uuid())
+  walletId    String
+  type        String
+  amount      Int
+  description String?
+  leadId      String?
+  createdAt   DateTime    @default(now())
+  wallet      TokenWallet @relation(fields: [walletId], references: [id])
+  @@map("token_ledger")
 }
 
 

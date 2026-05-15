@@ -56,6 +56,8 @@ export class AuthService {
         },
       });
 
+      try { await tx.tokenWallet.create({ data: { tenantId: tenant.id, balance: 10 } }); } catch(_) {}
+
       return { tenant, user };
     });
 

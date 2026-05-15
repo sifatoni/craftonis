@@ -14,6 +14,7 @@ import { InterviewsModule } from './modules/interviews/interviews.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { MeetingsModule } from './meetings/meetings.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { LeadsModule } from './leads/leads.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
     QuestionsModule,
     MeetingsModule,
     OnboardingModule,
+    LeadsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

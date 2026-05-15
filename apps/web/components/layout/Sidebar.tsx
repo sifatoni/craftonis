@@ -17,7 +17,7 @@ const hiringManagerRoutes = ['/jobs', '/jobs-pipeline', '/cv-scoring', '/intervi
 
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { href: '/leads', icon: Radar, label: 'Lead Generation' },
+  { href: '/lead-generation', icon: Radar, label: 'Lead Generation' },
   { 
     id: 'hiring-manager',
     label: 'Hiring Manager',
