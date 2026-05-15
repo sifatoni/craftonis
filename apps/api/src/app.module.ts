@@ -13,6 +13,7 @@ import { DebugModule } from './modules/debug/debug.module';
 import { InterviewsModule } from './modules/interviews/interviews.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { MeetingsModule } from './meetings/meetings.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { MeetingsModule } from './meetings/meetings.module';
     InterviewsModule,
     QuestionsModule,
     MeetingsModule,
+    OnboardingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

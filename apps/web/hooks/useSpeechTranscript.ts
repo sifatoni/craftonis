@@ -13,10 +13,11 @@ interface TranscriptLine {
 
 interface UseSpeechTranscriptParams {
   roomCode: string;
-  meetingId: string;
+  meetingId?: string; // Made optional since interview room doesn't use it
   userName: string;
   socket: Socket | null;
   isHost: boolean;
+  endpoint?: string;
 }
 
 export function useSpeechTranscript({
@@ -25,6 +26,7 @@ export function useSpeechTranscript({
   userName,
   socket,
   isHost,
+  endpoint,
 }: UseSpeechTranscriptParams) {
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -74,7 +76,8 @@ export function useSpeechTranscript({
     chunkIndexRef.current++;
     
     try {
-      const response = await api.post(`/meetings/${meetingId}/transcribe-chunk`, formData, {
+      const url = endpoint || `/meetings/${meetingId}/transcribe-chunk`;
+      const response = await api.post(url, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       

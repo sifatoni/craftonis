@@ -28,6 +28,7 @@ model Tenant {
   tokenLedger   TokenLedger[]
   subscriptions Subscription[]
   questions     Question[]
+  onboardingPlans OnboardingPlan[]
 
   @@map("tenants")
 }
@@ -135,7 +136,7 @@ model Candidate {
   job         Job?            @relation(fields: [jobId], references: [id])
   cvScore     CvScore?
   interviews  Interview[]
-  onboarding  OnboardingPlan?
+  onboardingPlans OnboardingPlan[]
 
   @@map("candidates")
 }
@@ -182,6 +183,7 @@ model Interview {
 
   candidate     Candidate       @relation(fields: [candidateId], references: [id])
   job           Job?            @relation(fields: [jobId], references: [id])
+  room          InterviewRoom?
 
   @@map("interviews")
 }
@@ -197,6 +199,25 @@ enum InterviewStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+// ── INTERVIEW ROOM ─────────────────────────────────────────
+model InterviewRoom {
+  id            String    @id @default(uuid())
+  interviewId   String    @unique
+  roomCode      String    @unique @default(uuid())
+  status        String    @default("WAITING") // WAITING, ACTIVE, ENDED
+  transcript    Json?     // array of { speaker, text, timestampMs }
+  aiScore       Json?     // { communication, technical, behavioral, overall, summary }
+  codeContent   String?   @default("")
+  codeLanguage  String?   @default("javascript")
+  startedAt     DateTime?
+  endedAt       DateTime?
+  createdAt     DateTime  @default(now())
+
+  interview     Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  @@map("interview_rooms")
 }
 
 // ── MEETINGS ───────────────────────────────────────────────
@@ -286,6 +307,69 @@ model Lead {
   @@map("leads")
 }
 
+// ── ONBOARDING ─────────────────────────────────────────────
+model OnboardingPlan {
+  id            String              @id @default(uuid())
+  tenantId      String
+  candidateId   String
+  jobId         String?
+  title         String              @default("Onboarding Plan")
+  durationDays  Int                 @default(30)
+  startDate     DateTime?
+  status        String              @default("DRAFT") // DRAFT, ACTIVE, COMPLETED, CANCELLED
+  aiGenerated   Boolean             @default(false)
+  notes         String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id])
+  candidate     Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  weeks         OnboardingWeek[]
+  documents     OnboardingDocument[]
+
+  @@map("onboarding_plans")
+}
+
+model OnboardingWeek {
+  id          String            @id @default(uuid())
+  planId      String
+  weekNumber  Int
+  title       String
+  description String?
+  tasks       OnboardingTask[]
+  plan        OnboardingPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("onboarding_weeks")
+}
+
+model OnboardingTask {
+  id          String         @id @default(uuid())
+  weekId      String
+  title       String
+  description String?
+  category    String?        // DOCUMENTATION, TRAINING, MEETING, SETUP, GOAL
+  dueDay      Int?           // day number within the plan (1-90 etc)
+  completed   Boolean        @default(false)
+  completedAt DateTime?
+  assignee    String?        // person responsible
+  week        OnboardingWeek @relation(fields: [weekId], references: [id], onDelete: Cascade)
+
+  @@map("onboarding_tasks")
+}
+
+model OnboardingDocument {
+  id         String         @id @default(uuid())
+  planId     String
+  fileName   String
+  fileType   String
+  fileSize   Int
+  fileUrl    String?        // R2/S3 URL (optional for now, store base64 or path)
+  uploadedAt DateTime       @default(now())
+  plan       OnboardingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@map("onboarding_documents")
+}
+
 enum LeadStage {
   NEW
   CONTACTED
@@ -312,26 +396,7 @@ enum TokenLedgerType {
   DEBIT
 }
 
-// ── ONBOARDING ─────────────────────────────────────────────
-model OnboardingPlan {
-  id          String   @id @default(uuid())
-  candidateId String   @unique
-  planJson    Json?
-  currentWeek Int      @default(0)
-  status      OnboardingStatus @default(PENDING)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  candidate   Candidate @relation(fields: [candidateId], references: [id])
-
-  @@map("onboarding_plans")
-}
-
-enum OnboardingStatus {
-  PENDING
-  IN_PROGRESS
-  COMPLETED
-}
 
 // ── EMPLOYEES (HRM) ────────────────────────────────────────
 model Employee {

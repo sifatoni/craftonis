@@ -232,7 +232,7 @@ export function Sidebar() {
                       transition={{ duration: 0.2 }}
                       className="overflow-hidden"
                     >
-                      {item.children.map((child) => (
+                      {item.children?.map((child) => (
                         <NavItem
                           key={child.href}
                           href={child.href}

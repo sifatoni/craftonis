@@ -422,7 +422,25 @@ function CandidateDetailPanel({
                 {STAGES.filter(s => s.key !== 'REJECTED').map(s => (
                   <DropdownMenuItem key={s.key}
                     onClick={() => {
-                      updateStage.mutate({ id: candidate.id, stage: s.key })
+                      updateStage.mutate({ id: candidate.id, stage: s.key }, {
+                        onSuccess: () => {
+                          if (s.key === 'HIRED') {
+                            toast.success(
+                              <div className="flex flex-col gap-2 w-full mt-1">
+                                <span className="font-medium text-sm">🎉 {candidate.name} hired! Create onboarding plan?</span>
+                                <Button 
+                                  size="sm" 
+                                  className="bg-red-700 hover:bg-red-800 text-white h-8 w-full mt-1"
+                                  onClick={() => window.location.href = `/onboarding?candidateId=${candidate.id}&jobId=${candidate.jobId || ''}&name=${encodeURIComponent(candidate.name)}`}
+                                >
+                                  Create Plan
+                                </Button>
+                              </div>,
+                              { duration: 10000 }
+                            )
+                          }
+                        }
+                      })
                       if (s.key === 'INTERVIEW') onScheduleInterview(candidate)
                     }}
                     className="cursor-pointer flex items-center gap-2"

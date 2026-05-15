@@ -651,7 +651,13 @@ export default function MeetingLedgerPage() {
                 id="scheduledFor"
                 type="datetime-local"
                 value={scheduledFor}
-                onChange={(e) => setScheduledFor(e.target.value)}
+                onChange={(e) => {
+                  setScheduledFor(e.target.value);
+                  if (e.target.value) {
+                    setTimeout(() => e.target.blur(), 100);
+                  }
+                }}
+                onBlur={(e) => e.target.blur()}
                 style={{ colorScheme: 'dark' }}
                 className="pl-3 bg-[#111111] border-[#1A1A1A] text-white focus:border-[#A50000] focus:ring-[#A50000]"
               />
@@ -713,7 +719,13 @@ export default function MeetingLedgerPage() {
                   id="newScheduledFor"
                   type="datetime-local"
                   value={newScheduledFor}
-                  onChange={(e) => setNewScheduledFor(e.target.value)}
+                  onChange={(e) => {
+                    setNewScheduledFor(e.target.value);
+                    if (e.target.value) {
+                      setTimeout(() => e.target.blur(), 100);
+                    }
+                  }}
+                  onBlur={(e) => e.target.blur()}
                   style={{ colorScheme: 'dark' }}
                   className="flex h-10 w-full rounded-md border border-[#1A1A1A] bg-[#111111] pl-3 pr-3 py-2 text-sm text-white focus:border-[#A50000] focus:outline-none focus:ring-1 focus:ring-[#A50000]"
                 />

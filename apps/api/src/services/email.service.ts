@@ -89,3 +89,52 @@ export async function sendInterviewScheduledEmail(params: {
     `,
   })
 }
+
+export async function sendInterviewRoomInviteEmail(params: {
+  candidateEmail: string
+  candidateName: string
+  companyName: string
+  interviewType: string
+  roomLink: string
+}) {
+  const {
+    candidateEmail,
+    candidateName,
+    companyName,
+    interviewType,
+    roomLink,
+  } = params
+
+  const typeLabel = interviewType === 'TECHNICAL' ? 'Technical Interview'
+    : interviewType === 'BEHAVIORAL' ? 'Behavioral Interview'
+      : 'General Interview'
+
+  await resend.emails.send({
+    from: process.env.EMAIL_FROM || 'interviews@craftonis.com',
+    to: candidateEmail,
+    subject: `Interview Room Link - ${companyName}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+        <div style="background: #c41e3a; padding: 24px 32px;">
+          <h1 style="color: white; margin: 0; font-size: 22px;">Craftonis</h1>
+          <p style="color: #fca5a5; margin: 4px 0 0 0; font-size: 13px;">HR Intelligence Platform</p>
+        </div>
+        <div style="padding: 32px;">
+          <h2 style="color: #111827; margin: 0 0 8px 0;">Interview Room Ready</h2>
+          <p style="color: #6b7280; margin: 0 0 24px 0;">Your ${typeLabel} at <strong style="color: #111827;">${companyName}</strong> is starting soon.</p>
+
+          <div style="background: #f9fafb; border-radius: 8px; padding: 20px; margin-bottom: 24px; text-align: center;">
+            <p style="color: #6b7280; font-size: 14px; margin-bottom: 16px;">Click the button below to join the interview room:</p>
+            <a href="${roomLink}" style="display: inline-block; background: #c41e3a; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px;">Join Interview Room</a>
+            <p style="color: #9ca3af; font-size: 12px; margin-top: 16px;">Or copy this link: <br/><span style="color: #6b7280;">${roomLink}</span></p>
+          </div>
+
+          <p style="color: #6b7280; font-size: 13px; margin: 0;">Please ensure your microphone and camera are working before joining.</p>
+        </div>
+        <div style="background: #f3f4f6; padding: 16px 32px; text-align: center;">
+          <p style="color: #9ca3af; font-size: 12px; margin: 0;">This email was sent via Craftonis - HR Intelligence Platform</p>
+        </div>
+      </div>
+    `,
+  })
+}

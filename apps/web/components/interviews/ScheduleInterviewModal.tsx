@@ -196,7 +196,13 @@ export function ScheduleInterviewModal({
             <input
               type="datetime-local"
               value={scheduledAt}
-              onChange={e => setScheduledAt(e.target.value)}
+              onChange={e => {
+                setScheduledAt(e.target.value);
+                if (e.target.value) {
+                  setTimeout(() => e.target.blur(), 100);
+                }
+              }}
+              onBlur={e => e.target.blur()}
               className="w-full h-10 rounded-lg px-3 text-sm cursor-pointer"
               style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF', colorScheme: 'dark' }}
             />

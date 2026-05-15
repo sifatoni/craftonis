@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { api } from '@/lib/axios'
 import { toast } from 'sonner'
 import {
@@ -197,7 +198,13 @@ function ScheduleModal({ open, onClose }: { open: boolean; onClose: () => void }
             <input
               type="datetime-local"
               value={scheduledAt}
-              onChange={e => setScheduledAt(e.target.value)}
+              onChange={e => {
+                setScheduledAt(e.target.value);
+                if (e.target.value) {
+                  setTimeout(() => e.target.blur(), 100);
+                }
+              }}
+              onBlur={e => e.target.blur()}
               className="w-full h-10 rounded-lg px-3 text-sm cursor-pointer"
               style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF', colorScheme: 'dark' }}
             />
@@ -300,7 +307,14 @@ function EditInterviewModal({ interview, onClose }: { interview: any; onClose: (
 
           <div className="space-y-1.5">
             <Label style={{ color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 }}>SCHEDULED DATE & TIME</Label>
-            <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)}
+            <input type="datetime-local" value={scheduledAt} 
+              onChange={e => {
+                setScheduledAt(e.target.value);
+                if (e.target.value) {
+                  setTimeout(() => e.target.blur(), 100);
+                }
+              }}
+              onBlur={e => e.target.blur()}
               className="w-full h-10 rounded-lg px-3 text-sm cursor-pointer"
               style={{ background: '#0A0A0A', border: '1px solid #2E2E2E', color: '#FFFFFF', colorScheme: 'dark' }}
             />
@@ -763,12 +777,19 @@ export default function InterviewsPage() {
       .reduce((a: number, b: number, _: number, arr: number[]) => a + b / arr.length, 0) || 0,
   }
 
+  const router = useRouter()
+
   const handleStart = async (interview: any) => {
     try {
-      await api.put(`/interviews/${interview.id}/start`)
-      setActiveInterview(interview)
-    } catch {
-      setActiveInterview(interview)
+      if (interview.status === 'IN_PROGRESS' && interview.room?.roomCode) {
+        router.push(`/interview-room/${interview.room.roomCode}?role=interviewer`)
+        return
+      }
+      const room = await api.post(`/interviews/${interview.id}/room`).then(r => r.data)
+      router.push(`/interview-room/${room.roomCode}?role=interviewer`)
+    } catch (err) {
+      console.error(err)
+      toast.error('Failed to create or join interview room')
     }
   }
 

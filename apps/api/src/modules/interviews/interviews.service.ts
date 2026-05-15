@@ -25,7 +25,10 @@ export class InterviewsService {
 
     return this.prisma.interview.findMany({
       where,
-      include: { candidate: { select: CANDIDATE_SELECT } },
+      include: { 
+        candidate: { select: CANDIDATE_SELECT },
+        room: { select: { roomCode: true, status: true } }
+      },
       orderBy: { scheduledAt: 'asc' },
     })
   }
@@ -40,6 +43,7 @@ export class InterviewsService {
             cvScore: true,
           },
         },
+        room: { select: { roomCode: true, status: true } }
       },
     })
     if (!interview) throw new NotFoundException('Interview not found')

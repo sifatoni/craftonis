@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
+import { processTranscript } from '../common/transcript-processor.util';
 
 @Injectable()
 export class MinutesService {
@@ -15,11 +16,23 @@ export class MinutesService {
 
     if (!meeting) throw new Error('Meeting not found');
 
-    const transcriptText = meeting.transcripts.length > 0
-      ? meeting.transcripts
-          .map(t => `[${Math.floor(t.timestampMs / 60000)}:${String(Math.floor((t.timestampMs % 60000) / 1000)).padStart(2, '0')}] ${t.speaker || 'Unknown'}: ${t.text}`)
-          .join('\n')
-      : 'No transcript available. Generate a professional template for meeting minutes.';
+    const transcriptItems = meeting.transcripts.map(t => ({
+      speaker: t.speaker || 'Unknown',
+      text: t.text,
+      timestampMs: t.timestampMs,
+      flagged: (t as any).flagged,
+    }));
+
+    const { text: processedTranscript, needsChunking, chunks } = processTranscript(transcriptItems);
+
+    let transcriptText: string;
+
+    if (needsChunking) {
+      // Map-reduce: summarize each chunk then combine
+      transcriptText = await this.summarizeChunks(chunks, meeting.title || 'Meeting');
+    } else {
+      transcriptText = processedTranscript;
+    }
 
     const prompt = `IMPORTANT: Write ALL output in English only. Translate from any language if needed. Do not use any non-English words in the output.
 You are a professional meeting minutes writer for a company HR platform called Craftonis.
@@ -46,7 +59,7 @@ Generate meeting minutes. Return ONLY a JSON object with NO markdown, NO backtic
           'X-Title': 'Craftonis HR',
         },
         body: JSON.stringify({
-          model: 'meta-llama/llama-3.1-8b-instruct:free',
+          model: 'meta-llama/llama-3.3-70b-instruct:free',
           messages: [
             { role: 'system', content: 'You are a professional meeting minutes writer for Craftonis HR platform. CRITICAL RULES: 1) You MUST respond ONLY in English regardless of the language spoken in the transcript. 2) Even if the transcript is in Bangla, Hindi, Arabic, or any other language, translate everything and write the minutes in English only. 3) Respond ONLY with a valid JSON object. No markdown. No backticks. Start with { and end with }.' },
             { role: 'user', content: prompt },
@@ -107,6 +120,47 @@ Generate meeting minutes. Return ONLY a JSON object with NO markdown, NO backtic
     }
 
     throw new Error('All AI providers failed to generate minutes');
+  }
+
+  private async summarizeChunks(chunks: string[], title: string): Promise<string> {
+    const chunkSummaries: string[] = [];
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const chunkPrompt = `Summarize this portion (part ${i + 1} of ${chunks.length}) of a meeting transcript into key points, decisions, and action items mentioned. Be concise but complete. Output plain text, not JSON.
+
+TRANSCRIPT PART ${i + 1}:
+${chunks[i]}`;
+
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://craftonis.com',
+            'X-Title': 'Craftonis HR',
+          },
+          body: JSON.stringify({
+            model: 'meta-llama/llama-3.3-70b-instruct:free',
+            messages: [
+              { role: 'system', content: 'You are a concise meeting summarizer. Output plain text summaries only.' },
+              { role: 'user', content: chunkPrompt },
+            ],
+            temperature: 0.3,
+            max_tokens: 1000,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json() as any;
+          chunkSummaries.push(`[Part ${i + 1}]\n${data.choices?.[0]?.message?.content || ''}`);
+        }
+      } catch (e: any) {
+        this.logger.warn(`Chunk ${i + 1} summary failed: ${e.message}`);
+        chunkSummaries.push(`[Part ${i + 1}] Summary unavailable`);
+      }
+    }
+
+    return `[Long meeting — summarized in ${chunks.length} parts]\n\n${chunkSummaries.join('\n\n')}`;
   }
 
   private async saveMinutes(meetingId: string, data: any) {
