@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { v4 as uuidv4 } from 'uuid';
 import { toast } from 'sonner';
+import { Country, State, City } from 'country-state-city';
+import { api } from '@/lib/axios';
 
 const NEXT_PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api/v1';
 const SOCKET_URL = NEXT_PUBLIC_API_URL.replace('/api/v1', '') + '/leads';
@@ -14,12 +16,16 @@ export default function LeadGenerationPage() {
   const [jobId, setJobId] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [tokens, setTokens] = useState(0);
+  const [currentStep, setCurrentStep] = useState<string>('');
 
   // Form State
   const [designationInput, setDesignationInput] = useState('');
-  const [designations, setDesignations] = useState<string[]>(['CEO']);
+  const [designations, setDesignations] = useState<string[]>([]);
   const [industry, setIndustry] = useState('');
   const [country, setCountry] = useState('Bangladesh');
+  const [selectedCountryCode, setSelectedCountryCode] = useState<string>('BD');
+  const [state, setState] = useState('');
+  const [selectedStateCode, setSelectedStateCode] = useState<string>('');
   const [area, setArea] = useState('');
   const [organization, setOrganization] = useState('');
   const [startPage, setStartPage] = useState(1);
@@ -57,6 +63,9 @@ export default function LeadGenerationPage() {
 
     newSocket.on('leads:progress', (data: any) => {
       setLogs((prev) => [...prev, data].slice(-20));
+      if (data.step && !data.step.includes('log') && !data.step.includes('start')) {
+        setCurrentStep(data.step);
+      }
     });
 
     newSocket.on('leads:data', (newLeads: any[]) => {
@@ -76,12 +85,14 @@ export default function LeadGenerationPage() {
     newSocket.on('leads:complete', (summary: any) => {
       setIsSearching(false);
       setJobId('');
+      setCurrentStep('');
       toast.success(`Search complete! ${summary.total || 0} leads found.`);
     });
 
     newSocket.on('leads:error', (err: any) => {
       setIsSearching(false);
       setJobId('');
+      setCurrentStep('');
       toast.error(err.message || 'An error occurred during scraping');
     });
 
@@ -127,32 +138,23 @@ export default function LeadGenerationPage() {
     setIsSearching(true);
     setLogs([]);
     try {
-      const res = await fetch(`${NEXT_PUBLIC_API_URL}/leads/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token')}`,
-        },
-        body: JSON.stringify({
-          designations,
-          industry,
-          country,
-          area,
-          organization,
-          startPage,
-          endPage,
-          clientId,
-        }),
+      const response = await api.post('/leads/search', {
+        designations,
+        industry,
+        location: country,
+        state,
+        area,
+        organization,
+        startPage,
+        endPage,
+        clientId,
       });
-      if (res.ok) {
-        const data = await res.json();
-        setJobId(data.jobId);
-      } else {
-        throw new Error('Failed to start search');
-      }
+      setJobId(response.data.jobId);
     } catch (err: any) {
+      console.error('Search error:', err);
       setIsSearching(false);
-      toast.error(err.message);
+      const msg = err.response?.data?.message || err.message || 'Failed to start search';
+      toast.error(msg);
     }
   };
 
@@ -307,12 +309,78 @@ export default function LeadGenerationPage() {
 
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Country</label>
-            <input className="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-sm" value={country} onChange={e => setCountry(e.target.value)} />
+            <select 
+              className="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none" 
+              style={{ paddingRight: '2rem', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+              value={selectedCountryCode} 
+              onChange={e => {
+                const code = e.target.value;
+                setSelectedCountryCode(code);
+                const countryName = Country.getCountryByCode(code)?.name || '';
+                setCountry(countryName);
+                setSelectedStateCode('');
+                setState('');
+                setArea('');
+              }}
+            >
+              {Country.getAllCountries().sort((a, b) => a.name.localeCompare(b.name)).map(c => (
+                <option key={c.isoCode} value={c.isoCode}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">State / Province (Optional)</label>
+            <select 
+              className="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none" 
+              style={{ paddingRight: '2rem', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+              value={selectedStateCode} 
+              onChange={e => {
+                const code = e.target.value;
+                setSelectedStateCode(code);
+                const stateName = State.getStateByCodeAndCountry(code, selectedCountryCode)?.name || '';
+                setState(stateName);
+                setArea('');
+              }}
+            >
+              <option value="">All States</option>
+              {State.getStatesOfCountry(selectedCountryCode).sort((a, b) => a.name.localeCompare(b.name)).map(s => (
+                <option key={s.isoCode} value={s.isoCode}>{s.name}</option>
+              ))}
+            </select>
           </div>
 
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Area / City</label>
-            <input className="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-sm" value={area} onChange={e => setArea(e.target.value)} />
+            {(() => {
+              const cities = selectedStateCode 
+                ? City.getCitiesOfState(selectedCountryCode, selectedStateCode)
+                : City.getCitiesOfCountry(selectedCountryCode);
+              
+              if (cities?.length > 0) {
+                return (
+                  <select 
+                    className="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none" 
+                    style={{ paddingRight: '2rem', backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}
+                    value={area} 
+                    onChange={e => setArea(e.target.value)}
+                  >
+                    <option value="">All Cities</option>
+                    {[...cities].sort((a, b) => a.name.localeCompare(b.name)).map(city => (
+                      <option key={city.name} value={city.name}>{city.name}</option>
+                    ))}
+                  </select>
+                );
+              }
+              return (
+                <input 
+                  className="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500" 
+                  value={area} 
+                  onChange={e => setArea(e.target.value)} 
+                  placeholder="Enter city manually"
+                />
+              );
+            })()}
           </div>
 
           <div>
@@ -343,13 +411,41 @@ export default function LeadGenerationPage() {
         </div>
 
         {isSearching && (
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold mb-2">Live Progress</h3>
-            <div className="bg-black/50 p-2 rounded h-40 overflow-y-auto font-mono text-[10px] text-green-400 flex flex-col gap-1">
-              {logs.map((log, i) => (
-                <div key={i}>{log.message}</div>
-              ))}
-              <div ref={logEndRef} />
+          <div className="mt-4 flex flex-col gap-4">
+            <div>
+              <h3 className="text-sm font-semibold mb-2">Platform Sequence</h3>
+              <div className="bg-[#111] border border-[#222] p-2 rounded flex flex-col gap-1">
+                {[
+                  { id: 'ddg-linkedin', label: '🦆 LinkedIn (DuckDuckGo)' },
+                  { id: 'ddg-instagram', label: '🦆 Instagram (DuckDuckGo)' },
+                  { id: 'ddg-facebook', label: '🦆 Facebook (DuckDuckGo)' },
+                  { id: 'bing-linkedin', label: '🔵 LinkedIn (Bing)' },
+                  { id: 'bing-instagram', label: '🔵 Instagram (Bing)' },
+                  { id: 'bing-facebook', label: '🔵 Facebook (Bing)' },
+                  { id: 'yandex-linkedin', label: '🔴 LinkedIn (Yandex)' },
+                  { id: 'yandex-instagram', label: '🔴 Instagram (Yandex)' },
+                  { id: 'yandex-facebook', label: '🔴 Facebook (Yandex)' },
+                  { id: 'maps', label: '🟡 Google Maps' },
+                  { id: 'yellowpages', label: '🟠 Yellow Pages' }
+                ].map((step) => {
+                  const isActive = currentStep === step.id;
+                  return (
+                    <div key={step.id} className={`text-xs px-2 py-1 rounded flex items-center justify-between ${isActive ? 'bg-blue-600/20 text-blue-400 font-medium' : 'text-gray-500'}`}>
+                      <span>{step.label}</span>
+                      {isActive && <span className="animate-pulse">🔄</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold mb-2">Live Progress</h3>
+              <div className="bg-black/50 p-2 rounded h-40 overflow-y-auto font-mono text-[10px] text-green-400 flex flex-col gap-1">
+                {logs.map((log, i) => (
+                  <div key={i}>{log.message}</div>
+                ))}
+                <div ref={logEndRef} />
+              </div>
             </div>
           </div>
         )}
@@ -506,22 +602,23 @@ export default function LeadGenerationPage() {
             </h2>
             <p className="text-sm text-gray-300">
               {captchaData.engine} detected automated access and is showing a CAPTCHA.
+              This only happens the first time. After solving once, Google will remember you.
             </p>
             <div className="bg-black/50 p-3 rounded text-sm text-gray-400 border border-[#222]">
               <ol className="list-decimal pl-4 space-y-1">
-                <li>Click the button below to open the search engine.</li>
+                <li>Click the button below to open the CAPTCHA page.</li>
                 <li>Complete the human verification (CAPTCHA).</li>
                 <li>Return here and click &quot;I&apos;ve Completed Verification&quot;.</li>
               </ol>
             </div>
             <div className="flex flex-col gap-2 mt-2">
               <a
-                href={captchaData.engine === 'google' ? 'https://google.com' : 'https://bing.com'}
+                href={captchaData.captchaUrl || (captchaData.engine === 'google' ? 'https://google.com' : 'https://bing.com')}
                 target="_blank"
                 rel="noreferrer"
                 className="bg-[#222] hover:bg-[#333] text-center py-2 rounded text-sm font-medium transition-colors"
               >
-                Open {captchaData.engine === 'google' ? 'Google' : 'Bing'}
+                Open CAPTCHA
               </a>
               <button
                 onClick={solveCaptcha}

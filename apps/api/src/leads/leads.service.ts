@@ -1,7 +1,9 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { LeadsGateway } from './leads.gateway';
-import { ScrapeInput, scrapeGoogleSearch } from './scrapers/google-search-scraper';
+import { ScrapeInput } from './scrapers/google-search-scraper';
+import { scrapeDuckDuckGo } from './scrapers/duckduckgo-scraper';
+import { scrapeYandex } from './scrapers/yandex-scraper';
 import { scrapeGoogleMaps } from './scrapers/maps-scraper';
 import { scrapeYellowPages } from './scrapers/yellow-pages-scraper';
 import { mergeLeads } from './scrapers/lead-merger';
@@ -28,13 +30,46 @@ export class LeadsService {
         const onCaptcha = (data: any) => this.leadsGateway.emitCaptcha(input.clientId, { ...data, jobId });
         
         const onData = async (leads: any[], meta: any) => {
-          const blurred = leads.map(l => this.blurLead(l));
+          const validLeads = leads.filter(l => l.email || l.phone);
+          if (validLeads.length === 0) return;
+          const blurred = validLeads.map(l => this.blurLead(l)).filter(Boolean);
           this.leadsGateway.emitLeads(input.clientId, blurred);
-          await this.saveLeads(tenantId, leads);
+          await this.saveLeads(tenantId, validLeads);
         };
 
-        const googleLeads = await scrapeGoogleSearch(input, onProgress, signal, onData, onCaptcha);
-        allLeads = mergeLeads(allLeads, googleLeads);
+        // Step 1: DuckDuckGo
+        onProgress({ step: 'ddg-start', message: '[DDG] Starting DuckDuckGo search...', count: 0 });
+        const ddgLeads = await scrapeDuckDuckGo(
+          input,
+          onProgress,
+          signal,
+          async (pageLeads, meta) => {
+            const scored = scoreAndClean(pageLeads, input.designations);
+            const validLeads = scored.filter(l => l.email || l.phone);
+            if (validLeads.length === 0) return;
+            await this.saveLeads(tenantId, validLeads);
+            this.leadsGateway.emitLeads(input.clientId, validLeads.map(l => this.blurLead(l)).filter(Boolean));
+          }
+        );
+        allLeads = mergeLeads(allLeads, ddgLeads);
+
+        // Step 3: Yandex
+        if (!signal.cancelled) {
+          onProgress({ step: 'yandex-start', message: '[YANDEX] Starting Yandex search...', count: allLeads.length });
+          const yandexLeads = await scrapeYandex(
+            input,
+            onProgress,
+            signal,
+            async (pageLeads, meta) => {
+              const scored = scoreAndClean(pageLeads, input.designations);
+              const validLeads = scored.filter(l => l.email || l.phone);
+              if (validLeads.length === 0) return;
+              await this.saveLeads(tenantId, validLeads);
+              this.leadsGateway.emitLeads(input.clientId, validLeads.map(l => this.blurLead(l)).filter(Boolean));
+            }
+          );
+          allLeads = mergeLeads(allLeads, yandexLeads);
+        }
 
         if (!signal.cancelled) {
           const mapLeads = await scrapeGoogleMaps(input, onProgress, signal, onData);
@@ -69,7 +104,13 @@ export class LeadsService {
   }
 
   async getLeads(tenantId: string, filters: any = {}) {
-    const where: any = { tenantId };
+    const where: any = { 
+      tenantId,
+      OR: [
+        { email: { not: null, not: '' } },
+        { phone: { not: null, not: '' } }
+      ]
+    };
     if (filters.valueBand) where.valueBand = filters.valueBand;
     if (filters.platform) where.platform = filters.platform;
     if (filters.crmStage) where.crmStage = filters.crmStage;
@@ -217,6 +258,7 @@ export class LeadsService {
   }
 
   private blurLead(lead: any) {
+    if (!lead.email && !lead.phone) return null;
     return {
       ...lead,
       email: lead.email ? lead.email.replace(/(?<=.{2}).(?=.*@)/g, '*') : null,
@@ -227,6 +269,7 @@ export class LeadsService {
 
   async saveLeads(tenantId: string, leads: any[]) {
     for (const lead of leads) {
+      if (!lead.email && !lead.phone) continue;
       try {
         await this.prisma.lead.upsert({
           where: {

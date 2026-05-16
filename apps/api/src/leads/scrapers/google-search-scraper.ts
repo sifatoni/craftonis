@@ -1,14 +1,16 @@
+const os = require('os');
+const path = require('path');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const puppeteer = require('puppeteer-extra');
+const puppeteerExtra = require('puppeteer-extra');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
+puppeteerExtra.use(StealthPlugin());
 
 import { getBrowserConfig, setupPage, handleGoogleConsent } from './stealth-config';
 import { sleep, randInt, randomScroll, simulateMouseMovement, readingPause } from './delay';
 import { buildQueries, extractResultsFromPage, extractBingResultsFromPage, buildLeadFromResult } from './extractors';
 import { buildLinkedInQueries } from './query-builder';
-import { isBlocked, hasNoResults } from './captcha-handler';
+import { hasNoResults } from './captcha-handler';
 
 const MAX_TOTAL_LEADS = 300;
 const MAX_PAGES = 7;
@@ -48,9 +50,9 @@ export interface ScrapeInput {
   clientId: string;
 }
 
-async function waitForCaptchaSolved(signal: ScrapeSignal, onCaptcha: (data: any) => void, engine: string): Promise<void> {
+async function waitForCaptchaSolved(signal: ScrapeSignal, onCaptcha: (data: any) => void, engine: string, captchaUrl: string): Promise<void> {
   signal.captchaSolved = false;
-  onCaptcha({ engine, message: `CAPTCHA detected on ${engine}. Please solve it in your browser then click Continue.` });
+  onCaptcha({ engine, captchaUrl, message: `CAPTCHA detected on ${engine}. Please solve it in your browser then click Continue.` });
   // Wait up to 5 minutes for user to solve
   for (let i = 0; i < 300; i++) {
     if (signal.cancelled || signal.captchaSolved) break;
@@ -59,19 +61,37 @@ async function waitForCaptchaSolved(signal: ScrapeSignal, onCaptcha: (data: any)
   signal.captchaSolved = false;
 }
 
+async function checkIfReallyBlocked(page: any): Promise<boolean> {
+  try {
+    return await page.evaluate(() => {
+      return (
+        !!document.querySelector('iframe[src*="recaptcha"]') ||
+        !!document.querySelector('.g-recaptcha') ||
+        !!document.querySelector('#captcha') ||
+        !!document.querySelector('input[name="captcha"]') ||
+        (!!document.querySelector('form[action*="sorry"]') && !document.querySelector('#search') && !document.querySelector('#rso'))
+      );
+    });
+  } catch (_) { return false; }
+}
+
 async function safeGoto(page: any, url: string, onProgress: Function, signal: ScrapeSignal, onCaptcha: Function, leadsCount: number, engine: string): Promise<boolean> {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await sleep(randInt(800, 1500));
-      if (await isBlocked(page)) {
-        if (attempt < 2) {
-          await waitForCaptchaSolved(signal, onCaptcha as any, engine);
-          if (signal.cancelled) return false;
-          continue;
-        }
-        return false;
+      
+      const blocked = await checkIfReallyBlocked(page);
+      if (blocked) {
+        onProgress({ step: 'log', message: `[CAPTCHA] Detected on ${engine} attempt ${attempt + 1}`, count: leadsCount });
+        let captchaUrl = '';
+        try { captchaUrl = page.url(); } catch (_) {}
+        await waitForCaptchaSolved(signal, onCaptcha as any, engine, captchaUrl);
+        if (signal.cancelled) return false;
+        continue;
       }
+      
+      // Not blocked — proceed normally
       try {
         await page.waitForFunction(() =>
           document.querySelector('#search') !== null ||
@@ -81,9 +101,11 @@ async function safeGoto(page: any, url: string, onProgress: Function, signal: Sc
           { timeout: 10000 }
         );
       } catch (_) {}
+      
       await sleep(randInt(600, 1200));
       if (engine === 'google') await handleGoogleConsent(page);
       return true;
+      
     } catch (err: any) {
       onProgress({ step: 'log', message: `[RETRY] ${err.message}`, count: leadsCount });
       await sleep(4000);
@@ -97,7 +119,6 @@ export async function scrapeGoogleSearch(
   onProgress: (data: any) => void,
   signal: ScrapeSignal,
   onData: (leads: any[], meta: any) => void,
-  onCaptcha: (data: any) => void,
 ): Promise<any[]> {
   const designations = input.designations?.length ? input.designations.slice(0, 3) : ['CEO'];
   const startPg = input.startPage && input.startPage >= 1 ? input.startPage : 1;
@@ -110,8 +131,23 @@ export async function scrapeGoogleSearch(
   let browser: any;
 
   try {
-    browser = await puppeteer.launch({
-      ...getBrowserConfig({ headless: 'new' }),
+    // Use a persistent profile directory to maintain Google session cookies
+    const CHROME_PROFILE_DIR = path.join(os.homedir(), '.craftonis-chrome-profile');
+
+    browser = await puppeteerExtra.launch({
+      headless: 'new',
+      userDataDir: CHROME_PROFILE_DIR,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-web-security',
+        '--disable-dev-shm-usage',
+        '--disable-notifications',
+        '--disable-infobars',
+        '--lang=en-US,en',
+      ],
+      ignoreHTTPSErrors: true,
     });
   } catch (err: any) {
     throw new Error(`Failed to launch browser: ${err.message}`);
@@ -149,7 +185,7 @@ export async function scrapeGoogleSearch(
             const glCode = getCountryCode(input.location, input.area);
             const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&start=${start}&num=10&hl=en&gl=${glCode}&pws=0`;
             onProgress({ step: 'log', message: `[GOOGLE/${platform.toUpperCase()}] Page ${pageNum} — searching...`, count: allLeads.length });
-            const success = await safeGoto(page, url, onProgress, signal, onCaptcha, allLeads.length, 'google');
+            const success = await safeGoto(page, url, onProgress, signal, () => {}, allLeads.length, 'google');
             if (!success) continue;
             if (await hasNoResults(page)) break;
             await simulateMouseMovement(page);
@@ -188,8 +224,23 @@ export async function scrapeGoogleSearch(
             const first = (pageNum - 1) * 10 + 1;
             const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&first=${first}&count=10&setlang=en`;
             onProgress({ step: 'log', message: `[BING/${platform.toUpperCase()}] Page ${pageNum} — searching...`, count: allLeads.length });
-            const success = await safeGoto(page, url, onProgress, signal, onCaptcha, allLeads.length, 'bing');
-            if (!success) continue;
+            try {
+              await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
+              await sleep(randInt(1000, 2000));
+              // For Bing: just skip silently if blocked, no CAPTCHA popup
+              const bingBlocked = await page.evaluate(() => {
+                return !!document.querySelector('#captcha-form') || 
+                       document.title.includes('blocked') ||
+                       document.title.includes('captcha');
+              }).catch(() => false);
+              if (bingBlocked) {
+                onProgress({ step: 'log', message: '[BING] Temporarily blocked — skipping', count: allLeads.length });
+                continue;
+              }
+            } catch (err: any) {
+              onProgress({ step: 'log', message: `[BING] Navigation error — skipping`, count: allLeads.length });
+              continue;
+            }
             const results = await extractBingResultsFromPage(page);
             const pageLeads = results.map(r => buildLeadFromResult(r, { ...input, searchEngine: 'bing' }, designation)).filter(Boolean);
             if (pageLeads.length > 0) { allLeads.push(...pageLeads); onData(pageLeads, { platform, engine: 'bing', page: pageNum }); }

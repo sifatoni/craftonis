@@ -1,15 +1,14 @@
 export async function isBlocked(page: any): Promise<boolean> {
   try {
-    const title = await page.title();
-    if (title.includes('Sorry') || title.includes('unusual traffic')) return true;
     return await page.evaluate(() => {
-      const text = (document.body?.innerText || '').toLowerCase();
-      return text.includes('unusual traffic') || text.includes('captcha') ||
-        text.includes('verify you are human') || text.includes("i'm not a robot") ||
-        !!document.querySelector('#captcha') ||
+      // Only block if actual CAPTCHA elements are present — not just text
+      return (
         !!document.querySelector('form[action*="sorry"]') ||
         !!document.querySelector('iframe[src*="recaptcha"]') ||
-        !!document.querySelector('.g-recaptcha');
+        !!document.querySelector('.g-recaptcha') ||
+        !!document.querySelector('#captcha') ||
+        !!document.querySelector('input[name="captcha"]')
+      );
     });
   } catch (_) { return false; }
 }

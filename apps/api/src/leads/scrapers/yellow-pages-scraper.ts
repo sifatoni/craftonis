@@ -1,8 +1,8 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const puppeteer = require('puppeteer-extra');
+const puppeteerExtra = require('puppeteer-extra');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
+puppeteerExtra.use(StealthPlugin());
 
 import { getBrowserConfig, setupPage, handleGoogleConsent } from './stealth-config';
 import { sleep, randInt } from './delay';
@@ -21,8 +21,19 @@ export async function scrapeYellowPages(
   let browser: any;
 
   try {
-    browser = await puppeteer.launch({
-      ...getBrowserConfig({ headless: 'new' }),
+    browser = await puppeteerExtra.launch({
+      headless: 'new',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-web-security',
+        '--disable-dev-shm-usage',
+        '--disable-notifications',
+        '--disable-infobars',
+        '--lang=en-US,en',
+      ],
+      ignoreHTTPSErrors: true,
     });
 
     if (signal) signal.onCancel = () => browser?.close().catch(() => {});
