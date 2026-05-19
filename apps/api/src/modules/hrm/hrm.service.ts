@@ -74,16 +74,14 @@ export class HrmService {
     }
   }
 
-  async create(tenantId: string, dto: CreateEmployeeDto) {
+  async create(tenantId: string, userId: string, dto: CreateEmployeeDto) {
     try {
       const sanitizedData = this.sanitizeEmployeeData(dto);
 
       return await this.prisma.employee.create({
         data: {
           tenantId,
-          // Existing employee schema in your Prisma has a required 'userId'. Generating a placeholder
-          // if it's missing from the new instruction's schema.
-          userId: `usr_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          userId,
           ...sanitizedData,
         },
       });
@@ -190,6 +188,27 @@ export class HrmService {
     } catch (error) {
       this.logger.error(`Error generating org chart for tenant ${tenantId}`, error);
       throw new InternalServerErrorException('Failed to generate org chart');
+    }
+  }
+
+  async linkUser(tenantId: string, employeeId: string, userId: string) {
+    try {
+      const employee = await this.prisma.employee.findFirst({
+        where: { id: employeeId, tenantId },
+      });
+
+      if (!employee) {
+        throw new NotFoundException(`Employee with ID ${employeeId} not found`);
+      }
+
+      return await this.prisma.employee.update({
+        where: { id: employeeId },
+        data: { userId },
+      });
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      this.logger.error(`Error linking user to employee ${employeeId} for tenant ${tenantId}`, error);
+      throw new InternalServerErrorException('Failed to link user to employee');
     }
   }
 }

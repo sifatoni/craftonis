@@ -22,11 +22,12 @@ export class HrmController {
   }
 
   @Post('employees')
-  async create(
+  async createEmployee(
     @CurrentUser() user: any,
     @Body() dto: CreateEmployeeDto,
   ) {
-    return this.hrmService.create(user.tenantId, dto);
+    const userId = user.sub ?? user.id;
+    return this.hrmService.create(user.tenantId, userId, dto);
   }
 
   @Get('employees/:id')
@@ -52,6 +53,15 @@ export class HrmController {
     @Param('id') id: string,
   ) {
     return this.hrmService.archive(user.tenantId, id);
+  }
+
+  @Put('employees/:id/link-user')
+  async linkUser(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body('userId') userId: string,
+  ) {
+    return this.hrmService.linkUser(user.tenantId, id, userId);
   }
 
   @Get('org-chart')

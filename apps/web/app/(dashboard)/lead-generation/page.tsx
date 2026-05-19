@@ -357,7 +357,7 @@ export default function LeadGenerationPage() {
                 ? City.getCitiesOfState(selectedCountryCode, selectedStateCode)
                 : City.getCitiesOfCountry(selectedCountryCode);
               
-              if (cities?.length > 0) {
+              if (cities && cities.length > 0) {
                 return (
                   <select 
                     className="w-full bg-[#111] border border-[#333] rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none" 
@@ -366,7 +366,7 @@ export default function LeadGenerationPage() {
                     onChange={e => setArea(e.target.value)}
                   >
                     <option value="">All Cities</option>
-                    {[...cities].sort((a, b) => a.name.localeCompare(b.name)).map(city => (
+                    {[...(cities || [])].sort((a, b) => a.name.localeCompare(b.name)).map(city => (
                       <option key={city.name} value={city.name}>{city.name}</option>
                     ))}
                   </select>

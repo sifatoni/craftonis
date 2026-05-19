@@ -8,7 +8,7 @@
       "esnext"
     ],
     "module": "esnext",
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "jsx": "preserve",
     "incremental": true,
     "plugins": [

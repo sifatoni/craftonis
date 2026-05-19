@@ -1,4 +1,10 @@
-import { Injectable, Logger, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  NotFoundException,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { RejectLeaveDto } from './dto/reject-leave.dto';
@@ -10,28 +16,46 @@ export class LeaveService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async createLeave(tenantId: string, employeeId: string, dto: CreateLeaveDto) {
+  private async resolveEmployee(userId: string, tenantId: string) {
+    const employee = await this.prisma.employee.findFirst({
+      where: { userId, tenantId, status: 'ACTIVE' },
+    });
+    if (!employee) {
+      throw new NotFoundException(
+        'No employee profile linked to your account. Please contact HR.',
+      );
+    }
+    return employee;
+  }
+
+  async createLeave(userId: string, tenantId: string, dto: CreateLeaveDto) {
     try {
+      const employee = await this.resolveEmployee(userId, tenantId);
+      const employeeId = employee.id;
+
       const startDate = new Date(dto.startDate);
       const endDate = new Date(dto.endDate);
 
       if (startDate > endDate) {
-        throw new BadRequestException('Start date must be before or equal to end date');
+        throw new BadRequestException(
+          'Start date must be before or equal to end date',
+        );
       }
 
-      // Calculate totalDays = business days between startDate and endDate
       let totalDays = 0;
       const current = new Date(startDate);
       while (current <= endDate) {
         const day = current.getUTCDay();
-        if (day !== 0 && day !== 6) { // Skip Sunday(0) and Saturday(6)
+        if (day !== 0 && day !== 6) {
           totalDays++;
         }
         current.setUTCDate(current.getUTCDate() + 1);
       }
 
       if (totalDays === 0) {
-        throw new BadRequestException('Selected date range contains no business days');
+        throw new BadRequestException(
+          'Selected date range contains no business days',
+        );
       }
 
       return await this.prisma.leaveRequest.create({
@@ -47,15 +71,24 @@ export class LeaveService {
         },
       });
     } catch (error) {
-      if (error instanceof BadRequestException) {
+      if (
+        error instanceof BadRequestException ||
+        error instanceof NotFoundException
+      ) {
         throw error;
       }
-      this.logger.error(`Error creating leave request for employee ${employeeId}`, error);
+      this.logger.error(
+        `Error creating leave request for user ${userId}`,
+        error,
+      );
       throw new InternalServerErrorException('Failed to create leave request');
     }
   }
 
-  async getLeaves(tenantId: string, filters: { status?: LeaveStatus; employeeId?: string }) {
+  async getLeaves(
+    tenantId: string,
+    filters: { status?: LeaveStatus; employeeId?: string },
+  ) {
     try {
       const where: any = { tenantId };
       if (filters.status) where.status = filters.status;
@@ -65,36 +98,42 @@ export class LeaveService {
         where,
         include: {
           employee: {
-            select: {
-              firstName: true,
-              lastName: true,
-            },
+            select: { firstName: true, lastName: true },
           },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy: { createdAt: 'desc' },
       });
     } catch (error) {
-      this.logger.error(`Error getting leave requests for tenant ${tenantId}`, error);
-      throw new InternalServerErrorException('Failed to retrieve leave requests');
+      this.logger.error(
+        `Error getting leave requests for tenant ${tenantId}`,
+        error,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve leave requests',
+      );
     }
   }
 
-  async getMyLeaves(tenantId: string, employeeId: string) {
+  async getMyLeaves(userId: string, tenantId: string) {
     try {
+      const employee = await this.resolveEmployee(userId, tenantId);
+      const employeeId = employee.id;
+
       return await this.prisma.leaveRequest.findMany({
-        where: {
-          tenantId,
-          employeeId,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        where: { tenantId, employeeId },
+        orderBy: { createdAt: 'desc' },
       });
     } catch (error) {
-      this.logger.error(`Error getting leave requests for employee ${employeeId}`, error);
-      throw new InternalServerErrorException('Failed to retrieve leave requests');
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      this.logger.error(
+        `Error getting leave requests for user ${userId}`,
+        error,
+      );
+      throw new InternalServerErrorException(
+        'Failed to retrieve leave requests',
+      );
     }
   }
 
@@ -109,18 +148,20 @@ export class LeaveService {
       }
 
       if (leave.status !== LeaveStatus.PENDING) {
-        throw new BadRequestException(`Cannot approve leave request with status ${leave.status}`);
+        throw new BadRequestException(
+          `Cannot approve leave request with status ${leave.status}`,
+        );
       }
 
       return await this.prisma.leaveRequest.update({
         where: { id },
-        data: {
-          status: LeaveStatus.APPROVED,
-          approverId,
-        },
+        data: { status: LeaveStatus.APPROVED, approverId },
       });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       this.logger.error(`Error approving leave request ${id}`, error);
@@ -128,7 +169,12 @@ export class LeaveService {
     }
   }
 
-  async rejectLeave(tenantId: string, id: string, approverId: string, dto: RejectLeaveDto) {
+  async rejectLeave(
+    tenantId: string,
+    id: string,
+    approverId: string,
+    dto: RejectLeaveDto,
+  ) {
     try {
       const leave = await this.prisma.leaveRequest.findFirst({
         where: { id, tenantId },
@@ -139,7 +185,9 @@ export class LeaveService {
       }
 
       if (leave.status !== LeaveStatus.PENDING) {
-        throw new BadRequestException(`Cannot reject leave request with status ${leave.status}`);
+        throw new BadRequestException(
+          `Cannot reject leave request with status ${leave.status}`,
+        );
       }
 
       return await this.prisma.leaveRequest.update({
@@ -151,7 +199,10 @@ export class LeaveService {
         },
       });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       this.logger.error(`Error rejecting leave request ${id}`, error);
@@ -159,29 +210,39 @@ export class LeaveService {
     }
   }
 
-  async cancelLeave(tenantId: string, id: string, employeeId: string) {
+  async cancelLeave(userId: string, tenantId: string, id: string) {
     try {
+      const employee = await this.resolveEmployee(userId, tenantId);
+      const employeeId = employee.id;
+
       const leave = await this.prisma.leaveRequest.findFirst({
         where: { id, tenantId, employeeId },
       });
 
       if (!leave) {
-        throw new NotFoundException('Leave request not found or not owned by you');
+        throw new NotFoundException(
+          'Leave request not found or not owned by you',
+        );
       }
 
       if (leave.status !== LeaveStatus.PENDING) {
-        throw new BadRequestException('Only pending leave requests can be cancelled');
+        throw new BadRequestException(
+          'Only pending leave requests can be cancelled',
+        );
       }
 
-      return await this.prisma.leaveRequest.delete({
-        where: { id },
-      });
+      return await this.prisma.leaveRequest.delete({ where: { id } });
     } catch (error) {
-      if (error instanceof NotFoundException || error instanceof BadRequestException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
         throw error;
       }
       this.logger.error(`Error cancelling leave request ${id}`, error);
-      throw new InternalServerErrorException('Failed to cancel leave request');
+      throw new InternalServerErrorException(
+        'Failed to cancel leave request',
+      );
     }
   }
 }

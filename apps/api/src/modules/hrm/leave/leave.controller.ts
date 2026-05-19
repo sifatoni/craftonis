@@ -1,4 +1,15 @@
-import { Controller, Get, Post, Body, Param, Put, Delete, Query, UseGuards, Req } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Put,
+  Delete,
+  Query,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import { LeaveService } from './leave.service';
 import { CreateLeaveDto } from './dto/create-leave.dto';
 import { RejectLeaveDto } from './dto/reject-leave.dto';
@@ -13,8 +24,8 @@ export class LeaveController {
   @Post()
   async createLeave(@Req() req: any, @Body() dto: CreateLeaveDto) {
     const tenantId = req.user.tenantId;
-    const employeeId = req.user.employeeId || req.user.id;
-    return this.leaveService.createLeave(tenantId, employeeId, dto);
+    const userId = req.user.sub ?? req.user.id ?? req.user.userId;
+    return this.leaveService.createLeave(userId, tenantId, dto);
   }
 
   @Get()
@@ -30,14 +41,14 @@ export class LeaveController {
   @Get('my')
   async getMyLeaves(@Req() req: any) {
     const tenantId = req.user.tenantId;
-    const employeeId = req.user.employeeId || req.user.id;
-    return this.leaveService.getMyLeaves(tenantId, employeeId);
+    const userId = req.user.sub ?? req.user.id ?? req.user.userId;
+    return this.leaveService.getMyLeaves(userId, tenantId);
   }
 
   @Put(':id/approve')
   async approveLeave(@Req() req: any, @Param('id') id: string) {
     const tenantId = req.user.tenantId;
-    const approverId = req.user.id; // Usually user ID
+    const approverId = req.user.id;
     return this.leaveService.approveLeave(tenantId, id, approverId);
   }
 
@@ -48,14 +59,14 @@ export class LeaveController {
     @Body() dto: RejectLeaveDto,
   ) {
     const tenantId = req.user.tenantId;
-    const approverId = req.user.id; // Usually user ID
+    const approverId = req.user.id;
     return this.leaveService.rejectLeave(tenantId, id, approverId, dto);
   }
 
   @Delete(':id')
   async cancelLeave(@Req() req: any, @Param('id') id: string) {
     const tenantId = req.user.tenantId;
-    const employeeId = req.user.employeeId || req.user.id;
-    return this.leaveService.cancelLeave(tenantId, id, employeeId);
+    const userId = req.user.sub ?? req.user.id ?? req.user.userId;
+    return this.leaveService.cancelLeave(userId, tenantId, id);
   }
 }

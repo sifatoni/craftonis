@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards, Req, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { AttendanceService } from './attendance.service';
 import { CheckinDto } from './dto/checkin.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
@@ -11,22 +21,22 @@ export class AttendanceController {
   @Post('checkin')
   async checkin(@Req() req: any, @Body() dto: CheckinDto) {
     const tenantId = req.user.tenantId;
-    const employeeId = req.user.employeeId || req.user.id;
-    return this.attendanceService.checkin(tenantId, employeeId, dto);
+    const userId = req.user.sub ?? req.user.id ?? req.user.userId;
+    return this.attendanceService.checkin(userId, tenantId, dto);
   }
 
   @Post('checkout')
   async checkout(@Req() req: any) {
     const tenantId = req.user.tenantId;
-    const employeeId = req.user.employeeId || req.user.id;
-    return this.attendanceService.checkout(tenantId, employeeId);
+    const userId = req.user.sub ?? req.user.id ?? req.user.userId;
+    return this.attendanceService.checkout(userId, tenantId);
   }
 
   @Get('today')
   async getTodayStatus(@Req() req: any) {
     const tenantId = req.user.tenantId;
-    const employeeId = req.user.employeeId || req.user.id;
-    return this.attendanceService.getTodayStatus(tenantId, employeeId);
+    const userId = req.user.sub ?? req.user.id ?? req.user.userId;
+    return this.attendanceService.getTodayStatus(userId, tenantId);
   }
 
   @Get(':employeeId/summary')
@@ -37,7 +47,12 @@ export class AttendanceController {
     @Query('year', ParseIntPipe) year: number,
   ) {
     const tenantId = req.user.tenantId;
-    return this.attendanceService.getMonthlySummary(tenantId, employeeId, month, year);
+    return this.attendanceService.getMonthlySummary(
+      tenantId,
+      employeeId,
+      month,
+      year,
+    );
   }
 
   @Get(':employeeId')
