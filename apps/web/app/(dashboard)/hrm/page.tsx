@@ -1,20 +1,30 @@
 'use client'
 
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Users, Building2, GitBranch, UserPlus, TrendingUp } from 'lucide-react'
+import { Users, Building2, GitBranch, UserPlus, TrendingUp, Clock, CalendarDays } from 'lucide-react'
 import { api } from '@/lib/axios'
 import { Button } from '@/components/ui/button'
 import { EmployeeList } from '@/components/hrm/EmployeeList'
 import { DepartmentList } from '@/components/hrm/DepartmentList'
 import { OrgChart } from '@/components/hrm/OrgChart'
+import { AttendanceView } from '@/components/hrm/AttendanceView'
+import { LeaveView } from '@/components/hrm/LeaveView'
 import { EmployeeModal } from '@/components/hrm/EmployeeModal'
+import { useState, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-type Tab = 'employees' | 'departments' | 'orgchart'
+type Tab = 'employees' | 'attendance' | 'leave' | 'departments' | 'org-chart'
 
-export default function HRMPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('employees')
+function HRMPageContent() {
+  const searchParams = useSearchParams()
   const [showAddEmployee, setShowAddEmployee] = useState(false)
+
+  const activeTabParam = searchParams.get('tab')
+  let activeTab: Tab = 'employees'
+  if (activeTabParam === 'attendance') activeTab = 'attendance'
+  else if (activeTabParam === 'leave') activeTab = 'leave'
+  else if (activeTabParam === 'departments') activeTab = 'departments'
+  else if (activeTabParam === 'org-chart' || activeTabParam === 'orgchart') activeTab = 'org-chart'
 
   const { data: employees = [] } = useQuery<any[]>({
     queryKey: ['hrm-employees'],
@@ -49,12 +59,6 @@ export default function HRMPage() {
     { label: 'New This Month', value: String(newThisMonth), icon: TrendingUp },
     { label: 'Total Payroll', value: `৳ ${totalPayroll.toLocaleString()}`, icon: UserPlus },
     { label: 'Total Departments', value: String(departments.length), icon: Building2 },
-  ]
-
-  const tabs: Array<{ key: Tab; label: string; icon: typeof Users }> = [
-    { key: 'employees', label: 'Employees', icon: Users },
-    { key: 'departments', label: 'Departments', icon: Building2 },
-    { key: 'orgchart', label: 'Org Chart', icon: GitBranch },
   ]
 
   return (
@@ -118,45 +122,33 @@ export default function HRMPage() {
         })}
       </div>
 
-      {/* Tab Nav */}
-      <div
-        className="flex gap-1 p-1 rounded-xl"
-        style={{
-          background: '#111111',
-          border: '1px solid #2E2E2E',
-          width: 'fit-content',
-        }}
-      >
-        {tabs.map((tab) => {
-          const Icon = tab.icon
-          const isActive = activeTab === tab.key
-          return (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{
-                background: isActive ? '#A50000' : 'transparent',
-                color: isActive ? '#FFFFFF' : '#A0A0A0',
-              }}
-            >
-              <Icon size={14} />
-              {tab.label}
-            </button>
-          )
-        })}
-      </div>
-
       {/* Content */}
       {activeTab === 'employees' && <EmployeeList />}
+      {activeTab === 'attendance' && <AttendanceView />}
+      {activeTab === 'leave' && <LeaveView />}
       {activeTab === 'departments' && <DepartmentList />}
-      {activeTab === 'orgchart' && <OrgChart />}
+      {activeTab === 'org-chart' && <OrgChart />}
 
-      {/* Always mounted — open prop controls visibility, avoids remount on toggle */}
+      {/* Always mounted — open prop controls visibility */}
       <EmployeeModal
         open={showAddEmployee}
         onClose={() => setShowAddEmployee(false)}
       />
     </div>
+  )
+}
+
+export default function HRMPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-64 items-center justify-center">
+        <div
+          className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: '#A50000', borderTopColor: 'transparent' }}
+        />
+      </div>
+    }>
+      <HRMPageContent />
+    </Suspense>
   )
 }

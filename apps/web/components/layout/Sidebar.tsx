@@ -1,16 +1,16 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import { useUiStore } from '@/store/ui.store'
 import {
   LayoutDashboard, Radar, Briefcase, FileSearch, KanbanSquare,
   Code2, Video, Bot, Users, Settings, ChevronLeft,
-  ChevronDown
+  ChevronDown, CalendarOff, GitBranch, Building2, Clock
 } from 'lucide-react'
 
 const hiringManagerRoutes = ['/jobs', '/jobs-pipeline', '/cv-scoring', '/interviews', '/onboarding']
@@ -31,7 +31,19 @@ const navItems = [
     ]
   },
   { href: '/meeting-ledger', icon: Video, label: 'Meeting Ledger' },
-  { href: '/hrm', icon: Users, label: 'HRM' },
+  {
+    id: 'hrm',
+    label: 'HRM',
+    icon: Users,
+    children: [
+      { href: '/hrm', icon: LayoutDashboard, label: 'Dashboard' },
+      { href: '/hrm?tab=employees', icon: Users, label: 'Employees' },
+      { href: '/hrm?tab=attendance', icon: Clock, label: 'Attendance' },
+      { href: '/hrm?tab=leave', icon: CalendarOff, label: 'Leave' },
+      { href: '/hrm?tab=departments', icon: Building2, label: 'Departments' },
+      { href: '/hrm?tab=org-chart', icon: GitBranch, label: 'Org Chart' },
+    ]
+  }
 ]
 
 interface NavItemProps {
@@ -100,14 +112,20 @@ function NavItem({ href, icon: Icon, label, isActive, sidebarCollapsed, isChild 
   )
 }
 
-export function Sidebar() {
+function SidebarContent() {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentTab = searchParams.get('tab')
   const { sidebarCollapsed, toggleSidebar } = useUiStore()
   const [isHiringManagerOpen, setIsHiringManagerOpen] = useState(false)
+  const [isHrmOpen, setIsHrmOpen] = useState(false)
 
   useEffect(() => {
     if (hiringManagerRoutes.some(route => pathname === route || pathname.startsWith(route))) {
       setIsHiringManagerOpen(true)
+    }
+    if (pathname === '/hrm' || pathname.startsWith('/hrm')) {
+      setIsHrmOpen(true)
     }
   }, [pathname])
 
@@ -115,7 +133,21 @@ export function Sidebar() {
     pathname === route || pathname.startsWith(route)
   )
 
+  const isHrmActive = pathname === '/hrm' || pathname.startsWith('/hrm')
+
   const isSettingsActive = pathname === '/settings' || pathname.startsWith('/settings')
+
+  const isChildActive = (childHref: string) => {
+    const [childPath, childQuery] = childHref.split('?')
+    if (pathname !== childPath) return false
+    
+    if (!childQuery) {
+      return !currentTab
+    }
+    
+    const childParams = new URLSearchParams(childQuery)
+    return currentTab === childParams.get('tab')
+  }
 
   return (
     <motion.aside
@@ -165,18 +197,23 @@ export function Sidebar() {
         {navItems.map((item) => {
           if ('children' in item) {
             const Icon = item.icon
+            const isHiringManager = item.id === 'hiring-manager'
+            const isGroupActive = isHiringManager ? isHiringManagerActive : isHrmActive
+            const isGroupOpen = isHiringManager ? isHiringManagerOpen : isHrmOpen
+            const setIsGroupOpen = isHiringManager ? setIsHiringManagerOpen : setIsHrmOpen
+
             return (
               <div key={item.id} className="mb-0.5">
                 <div
-                  onClick={() => !sidebarCollapsed && setIsHiringManagerOpen(!isHiringManagerOpen)}
+                  onClick={() => !sidebarCollapsed && setIsGroupOpen(!isGroupOpen)}
                   className={cn(
                     'relative flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg cursor-pointer transition-colors group',
-                    isHiringManagerActive ? 'bg-white/5' : 'hover:bg-white/5'
+                    isGroupActive ? 'bg-white/5' : 'hover:bg-white/5'
                   )}
                 >
-                  {isHiringManagerActive && (
+                  {isGroupActive && (
                     <motion.div
-                      layoutId="activeNavGroup"
+                      layoutId={`activeNavGroup-${item.id}`}
                       className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full"
                       style={{ background: '#A50000' }}
                       transition={{ duration: 0.2 }}
@@ -186,7 +223,7 @@ export function Sidebar() {
                   <Icon
                     size={20}
                     className="flex-shrink-0"
-                    style={{ color: isHiringManagerActive ? '#A50000' : '#606060' }}
+                    style={{ color: isGroupActive ? '#A50000' : '#606060' }}
                   />
 
                   <AnimatePresence>
@@ -199,12 +236,12 @@ export function Sidebar() {
                       >
                         <span 
                           className="text-sm font-medium whitespace-nowrap"
-                          style={{ color: isHiringManagerActive ? '#FFFFFF' : '#A0A0A0' }}
+                          style={{ color: isGroupActive ? '#FFFFFF' : '#A0A0A0' }}
                         >
                           {item.label}
                         </span>
                         <motion.div
-                          animate={{ rotate: isHiringManagerOpen ? 180 : 0 }}
+                          animate={{ rotate: isGroupOpen ? 180 : 0 }}
                           transition={{ duration: 0.2 }}
                         >
                           <ChevronDown size={14} style={{ color: '#606060' }} />
@@ -224,7 +261,7 @@ export function Sidebar() {
                 </div>
 
                 <AnimatePresence initial={false}>
-                  {isHiringManagerOpen && !sidebarCollapsed && (
+                  {isGroupOpen && !sidebarCollapsed && (
                     <motion.div
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
@@ -232,17 +269,23 @@ export function Sidebar() {
                       transition={{ duration: 0.2 }}
                       className="overflow-hidden"
                     >
-                      {item.children?.map((child) => (
-                        <NavItem
-                          key={child.href}
-                          href={child.href}
-                          icon={child.icon}
-                          label={child.label}
-                          isActive={pathname === child.href}
-                          sidebarCollapsed={sidebarCollapsed}
-                          isChild
-                        />
-                      ))}
+                      {item.children?.map((child) => {
+                        const childActive = isHiringManager 
+                          ? pathname === child.href 
+                          : isChildActive(child.href)
+                        
+                        return (
+                          <NavItem
+                            key={child.href}
+                            href={child.href}
+                            icon={child.icon}
+                            label={child.label}
+                            isActive={childActive}
+                            sidebarCollapsed={sidebarCollapsed}
+                            isChild
+                          />
+                        )
+                      })}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -251,7 +294,7 @@ export function Sidebar() {
           }
 
           const isActive = pathname === item.href ||
-            (item.href !== '/dashboard' && pathname.startsWith(item.href) && !hiringManagerRoutes.includes(item.href))
+            (item.href !== '/dashboard' && pathname.startsWith(item.href) && !hiringManagerRoutes.includes(item.href) && !pathname.startsWith('/hrm'))
 
           return (
             <NavItem
@@ -305,4 +348,12 @@ export function Sidebar() {
   )
 }
 
-
+export function Sidebar() {
+  return (
+    <Suspense fallback={
+      <div className="w-60 bg-[#0D0D0D] border-r border-[#1A1A1A]" />
+    }>
+      <SidebarContent />
+    </Suspense>
+  )
+}

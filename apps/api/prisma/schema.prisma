@@ -452,7 +452,7 @@ model Employee {
   reportingTo Employee?   @relation("ReportsTo", fields: [reportingToId], references: [id])
   reportees   Employee[]  @relation("ReportsTo")
 
-  attendance   Attendance[]
+  attendanceLogs AttendanceLog[]
   leaveRequests LeaveRequest[]
   payrolls     Payroll[]
 
@@ -468,58 +468,71 @@ enum EmployeeStatus {
 }
 
 // ── ATTENDANCE ─────────────────────────────────────────────
-model Attendance {
-  id         String    @id @default(uuid())
-  employeeId String
-  date       DateTime  @db.Date
-  checkIn    DateTime?
-  checkOut   DateTime?
-  status     AttendanceStatus @default(PRESENT)
-  createdAt  DateTime  @default(now())
+model AttendanceLog {
+  id            String           @id @default(cuid())
+  tenantId      String
+  employeeId    String
+  date          DateTime
+  checkinTime   DateTime?
+  checkoutTime  DateTime?
+  hoursWorked   Float?
+  status        AttendanceStatus @default(PRESENT)
+  notes         String?
+  createdAt     DateTime         @default(now())
 
-  employee   Employee  @relation(fields: [employeeId], references: [id])
+  employee      Employee         @relation(fields: [employeeId], references: [id])
 
   @@unique([employeeId, date])
-  @@map("attendance")
+  @@index([tenantId])
+  @@map("attendance_logs")
 }
 
-enum AttendanceStatus {
-  PRESENT
-  LATE
-  ABSENT
+enum AttendanceStatus { 
+  PRESENT 
+  LATE 
+  ABSENT 
+  HALF_DAY 
+  LEAVE 
+  HOLIDAY 
   ON_LEAVE
 }
 
 // ── LEAVE REQUESTS ─────────────────────────────────────────
 model LeaveRequest {
-  id         String      @id @default(uuid())
-  employeeId String
-  type       LeaveType
-  fromDate   DateTime    @db.Date
-  toDate     DateTime    @db.Date
-  status     LeaveStatus @default(PENDING)
-  reason     String?
-  approvedBy String?
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id              String        @id @default(cuid())
+  tenantId        String
+  employeeId      String
+  leaveType       LeaveType
+  startDate       DateTime
+  endDate         DateTime
+  totalDays       Int
+  reason          String?
+  status          LeaveStatus   @default(PENDING)
+  approverId      String?
+  approverComment String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  employee   Employee    @relation(fields: [employeeId], references: [id])
+  employee        Employee      @relation(fields: [employeeId], references: [id])
 
+  @@index([tenantId])
   @@map("leave_requests")
 }
 
-enum LeaveType {
-  ANNUAL
-  SICK
-  MATERNITY
-  PATERNITY
-  UNPAID
+enum LeaveType { 
+  ANNUAL 
+  SICK 
+  CASUAL 
+  MATERNITY 
+  PATERNITY 
+  UNPAID 
 }
 
-enum LeaveStatus {
-  PENDING
-  APPROVED
-  REJECTED
+enum LeaveStatus { 
+  PENDING 
+  APPROVED 
+  REJECTED 
+  CANCELLED 
 }
 
 // ── PAYROLL ────────────────────────────────────────────────
