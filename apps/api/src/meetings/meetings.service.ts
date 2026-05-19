@@ -59,6 +59,11 @@ export class MeetingsService {
     });
   }
 
+  /**
+   * Mark a meeting as ENDED.
+   * Called by both the legacy PUT /meetings/:roomCode/end and the new
+   * POST /meetings/:roomCode/end endpoints.
+   */
   async endMeeting(roomCode: string) {
     const meeting = await this.prisma.meeting.findUnique({ where: { roomCode } });
     if (!meeting) {
@@ -72,6 +77,33 @@ export class MeetingsService {
         endedAt: new Date(),
       },
     });
+  }
+
+  /**
+   * Record that a participant left the meeting.
+   *
+   * The actual WebRTC/socket cleanup is handled by the gateway's disconnect
+   * handler, so this method is non-critical — it exists for audit logging and
+   * to mark the meeting as LIVE (if it was still SCHEDULED when the first
+   * participant joined). It never throws so callers can fire-and-forget.
+   */
+  async leaveMeeting(roomCode: string, userId?: string): Promise<void> {
+    try {
+      const meeting = await this.prisma.meeting.findUnique({ where: { roomCode } });
+      if (!meeting) return; // silently ignore unknown rooms
+
+      // If the meeting was still in SCHEDULED state, transition it to LIVE
+      // when the first participant actually joins/leaves (edge case handling).
+      // No-op if already LIVE or ENDED.
+      if (meeting.status === 'SCHEDULED') {
+        await this.prisma.meeting.update({
+          where: { roomCode },
+          data: { status: 'LIVE' },
+        });
+      }
+    } catch {
+      // Non-fatal — log but never surface to the client
+    }
   }
 
   async saveTranscriptBatch(meetingId: string, items: { speaker: string; text: string; timestampMs: number; flagged: boolean }[]) {

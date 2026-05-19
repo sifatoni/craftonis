@@ -65,12 +65,11 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
       });
 
       socketRef.current.on('rejected', () => {
-        // Redirection handled in page.tsx if needed, but we should do it here or let UI know
         window.location.href = '/meeting-ledger?rejected=true';
       });
 
       socketRef.current.on('kicked', () => {
-        leaveRoom();
+        cleanupMediaAndConnections();
         window.location.href = '/meeting-ledger?kicked=true';
       });
 
@@ -149,15 +148,14 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
           }
           return prev.filter(p => p.userId !== leftUserId);
         });
-        
-        // Also remove from waiting list if they were there
+
         if (isHost) {
           setWaitingList(prev => prev.filter(p => p.userId !== leftUserId));
         }
       });
 
       socketRef.current.on('meeting-ended', () => {
-        leaveRoom();
+        cleanupMediaAndConnections();
         window.location.href = '/meeting-ledger';
       });
 
@@ -193,8 +191,31 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
 
   useEffect(() => {
     initSocketAndMedia();
-    return () => leaveRoom();
+    return () => cleanupMediaAndConnections();
   }, [roomCode, userId, isHost]);
+
+  /**
+   * Shared cleanup: stops all local media tracks and closes all peer connections.
+   * Does NOT disconnect the socket (caller is responsible).
+   */
+  const cleanupMediaAndConnections = useCallback(() => {
+    // Stop all local media tracks (camera + microphone)
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+    if (originalVideoTrackRef.current) {
+      originalVideoTrackRef.current.stop();
+      originalVideoTrackRef.current = null;
+    }
+
+    // Close all WebRTC peer connections
+    peerConnectionsRef.current.forEach(pc => pc.close());
+    peerConnectionsRef.current.clear();
+
+    // Update local stream state so the video element clears
+    setLocalStream(null);
+  }, []);
 
   const toggleMic = useCallback(() => {
     if (localStreamRef.current) {
@@ -219,10 +240,10 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
   const startScreenShare = async () => {
     if (isScreenSharing) {
       if (originalVideoTrackRef.current && localStreamRef.current) {
-        const senders = Array.from(peerConnectionsRef.current.values()).map(pc => 
+        const senders = Array.from(peerConnectionsRef.current.values()).map(pc =>
           pc.getSenders().find(s => s.track?.kind === 'video')
         );
-        
+
         senders.forEach(sender => {
           if (sender) sender.replaceTrack(originalVideoTrackRef.current);
         });
@@ -245,10 +266,10 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
       };
 
       if (localStreamRef.current) {
-        const senders = Array.from(peerConnectionsRef.current.values()).map(pc => 
+        const senders = Array.from(peerConnectionsRef.current.values()).map(pc =>
           pc.getSenders().find(s => s.track?.kind === 'video')
         );
-        
+
         senders.forEach(sender => {
           if (sender) sender.replaceTrack(screenTrack);
         });
@@ -263,42 +284,60 @@ export function useWebRTC({ roomCode, userId, userName, isHost }: UseWebRTCParam
     }
   };
 
-  const leaveRoom = useCallback(() => {
+  /**
+   * Leave the meeting as a participant.
+   * - Calls POST /meetings/:roomCode/leave on the backend
+   * - Emits leave-room socket event
+   * - Stops all local media tracks (camera + mic)
+   * - Closes all WebRTC peer connections
+   * - Disconnects the socket
+   */
+  const leaveRoom = useCallback(async () => {
+    // 1. Notify backend that this participant left
+    try {
+      await api.post(`/meetings/${roomCode}/leave`, { userId });
+    } catch (err) {
+      // Non-fatal: continue cleanup even if API fails
+      console.warn('Leave API call failed (non-fatal):', err);
+    }
+
+    // 2. Emit socket leave event
     if (socketRef.current) {
       socketRef.current.emit('leave-room', { roomCode, userId });
       socketRef.current.disconnect();
+      socketRef.current = null;
     }
 
-    peerConnectionsRef.current.forEach(pc => pc.close());
-    peerConnectionsRef.current.clear();
+    // 3. Stop media tracks and close peer connections
+    cleanupMediaAndConnections();
+  }, [roomCode, userId, cleanupMediaAndConnections]);
 
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (originalVideoTrackRef.current) {
-      originalVideoTrackRef.current.stop();
-    }
-  }, [roomCode, userId]);
-
+  /**
+   * End the meeting for ALL participants (host only).
+   * - Calls POST /meetings/:roomCode/end on the backend
+   * - Emits end-meeting socket event to kick everyone
+   * - Stops all local media tracks
+   * - Closes all WebRTC peer connections
+   * - Disconnects the socket
+   */
   const endMeeting = useCallback(async () => {
-    if (isHost && socketRef.current) {
-      try {
-        await api.put(`/meetings/${roomCode}/end`);
-        socketRef.current.emit('end-meeting', { roomCode, hostId: userId });
-        
-        if (localStreamRef.current) {
-          localStreamRef.current.getTracks().forEach(track => track.stop());
-        }
-        if (originalVideoTrackRef.current) {
-          originalVideoTrackRef.current.stop();
-        }
-        
-        window.location.href = '/meeting-ledger';
-      } catch (err) {
-        console.error('Failed to end meeting API call', err);
-      }
+    if (!isHost) return;
+
+    // 1. Mark meeting as ENDED in the database
+    await api.post(`/meetings/${roomCode}/end`);
+
+    // 2. Broadcast to all participants via socket
+    if (socketRef.current) {
+      socketRef.current.emit('end-meeting', { roomCode, hostId: userId });
+      // Small delay so the event broadcasts before we disconnect
+      await new Promise(resolve => setTimeout(resolve, 300));
+      socketRef.current.disconnect();
+      socketRef.current = null;
     }
-  }, [roomCode, userId, isHost]);
+
+    // 3. Stop media tracks and close peer connections
+    cleanupMediaAndConnections();
+  }, [roomCode, userId, isHost, cleanupMediaAndConnections]);
 
   const admitGuest = useCallback((targetSocketId: string) => {
     if (isHost && socketRef.current) {

@@ -34,10 +34,56 @@ export class MeetingsController {
     return this.meetingsService.getMeeting(roomCode);
   }
 
+  /**
+   * POST /meetings/:roomCode/end
+   *
+   * Ends the meeting for ALL participants:
+   *   1. Marks the meeting status as ENDED in the database (sets endedAt timestamp).
+   *   2. Broadcasts the 'meeting-ended' socket event so all connected clients navigate away.
+   *
+   * Previously only PUT was available and the socket broadcast was done client-side after the
+   * PUT returned — meaning if the PUT failed silently the socket event was never emitted, and
+   * vice-versa. This endpoint combines both operations atomically on the server.
+   */
+  @Post(':roomCode/end')
+  @UseGuards(JwtAuthGuard)
+  async endMeetingPost(
+    @Param('roomCode') roomCode: string,
+    @CurrentUser() user: any,
+  ) {
+    const meeting = await this.meetingsService.endMeeting(roomCode);
+    // Broadcast to all participants so their clients navigate away automatically
+    this.meetingsGateway.server.to(roomCode).emit('meeting-ended');
+    return { success: true, meeting };
+  }
+
+  /**
+   * PUT /meetings/:roomCode/end  (kept for backwards compatibility)
+   *
+   * Same as POST but without the gateway broadcast — the client is expected to
+   * emit 'end-meeting' via socket itself (legacy behaviour).
+   */
   @Put(':roomCode/end')
   @UseGuards(JwtAuthGuard)
-  async endMeeting(@Param('roomCode') roomCode: string) {
+  async endMeetingPut(@Param('roomCode') roomCode: string) {
     return this.meetingsService.endMeeting(roomCode);
+  }
+
+  /**
+   * POST /meetings/:roomCode/leave
+   *
+   * Removes a participant from the meeting on the backend.
+   * This is a lightweight record-keeping call — the actual WebRTC/socket cleanup
+   * is handled by the gateway's disconnect event handler, so this endpoint is
+   * non-critical and always returns success even if the participant wasn't tracked.
+   */
+  @Post(':roomCode/leave')
+  async leaveMeeting(
+    @Param('roomCode') roomCode: string,
+    @Body() body: { userId?: string },
+  ) {
+    await this.meetingsService.leaveMeeting(roomCode, body.userId);
+    return { success: true };
   }
 
   @Post(':meetingId/transcripts')

@@ -7,7 +7,7 @@ import { api } from '@/lib/axios'
 import { useWebRTC } from '@/hooks/useWebRTC'
 import { useSpeechTranscript } from '@/hooks/useSpeechTranscript'
 import { useAuthStore } from '@/store/auth.store'
-import { Mic, MicOff, Video as VideoIcon, VideoOff, MonitorUp, PhoneOff, Users, Bookmark, Link as LinkIcon, Check } from 'lucide-react'
+import { Mic, MicOff, Video as VideoIcon, VideoOff, MonitorUp, PhoneOff, Users, Bookmark, Link as LinkIcon, Check, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -38,6 +38,50 @@ function VideoTile({ stream, name, isLocal }: { stream?: MediaStream, name: stri
   )
 }
 
+/**
+ * End Meeting confirmation dialog — shown only to the host before ending for all participants.
+ */
+function EndMeetingDialog({
+  onConfirm,
+  onCancel,
+  isLoading,
+}: {
+  onConfirm: () => void
+  onCancel: () => void
+  isLoading: boolean
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-[#0D0D0D] border border-[#2E2E2E] rounded-xl p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
+        <h2 className="text-xl font-bold text-white mb-2" style={{ fontFamily: 'var(--font-syne)' }}>
+          End Meeting?
+        </h2>
+        <p className="text-sm text-[#A0A0A0] mb-6">
+          This will end the meeting for <span className="text-white font-medium">all participants</span>. This action cannot be undone.
+        </p>
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="flex-1 border-[#2E2E2E] text-[#A0A0A0] hover:bg-[#1A1A1A] hover:text-white"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={isLoading}
+            className="flex-1 bg-red-700 hover:bg-red-800 text-white border-none gap-2"
+          >
+            {isLoading && <Loader2 size={14} className="animate-spin" />}
+            End for All
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function RoomUI({ 
   roomCode, 
   user, 
@@ -55,6 +99,11 @@ function RoomUI({
   const [activeTab, setActiveTab] = useState<'TRANSCRIPT' | 'PARTICIPANTS'>(isHost ? 'TRANSCRIPT' : 'PARTICIPANTS')
   const transcriptEndRef = useRef<HTMLDivElement>(null)
   const [copied, setCopied] = useState(false)
+
+  // End meeting confirmation dialog state
+  const [showEndDialog, setShowEndDialog] = useState(false)
+  const [isEndingMeeting, setIsEndingMeeting] = useState(false)
+  const [isLeavingMeeting, setIsLeavingMeeting] = useState(false)
 
   // Create a stable guest ID if not logged in
   const [guestId] = useState(() => `guest-${Math.random().toString(36).substr(2, 9)}`)
@@ -91,6 +140,48 @@ function RoomUI({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  /**
+   * End Meeting — host only.
+   * Called after user confirms the dialog.
+   * 1. Calls endMeeting() which hits POST /meetings/:roomCode/end + socket broadcast
+   * 2. Shows toast
+   * 3. Navigates away
+   */
+  const handleConfirmEndMeeting = async () => {
+    setIsEndingMeeting(true)
+    try {
+      await endMeeting()
+      toast.success('Meeting ended')
+      router.push('/meeting-ledger')
+    } catch (err: any) {
+      console.error('Failed to end meeting:', err)
+      toast.error(err?.response?.data?.message || 'Failed to end meeting. Please try again.')
+      setIsEndingMeeting(false)
+      setShowEndDialog(false)
+    }
+  }
+
+  /**
+   * Leave Room — any participant (including host leaving without ending).
+   * 1. Calls leaveRoom() which hits POST /meetings/:roomCode/leave + stops media + closes peers
+   * 2. Shows toast
+   * 3. Navigates away
+   */
+  const handleLeaveRoom = async () => {
+    if (isLeavingMeeting) return
+    setIsLeavingMeeting(true)
+    try {
+      await leaveRoom()
+      toast.success('You left the meeting')
+      router.push('/meeting-ledger')
+    } catch (err: any) {
+      console.error('Failed to leave meeting:', err)
+      // Still navigate — the leave API is non-critical, media cleanup already happened
+      toast.success('You left the meeting')
+      router.push('/meeting-ledger')
+    }
+  }
+
   // Calculate grid layout based on number of people
   const totalPeople = participants.length + 1
   const gridClass = totalPeople === 1 ? 'grid-cols-1' :
@@ -123,6 +214,15 @@ function RoomUI({
 
   return (
     <div className="fixed inset-0 bg-[#0A0A0A] flex flex-col z-50">
+      {/* End Meeting Confirmation Dialog */}
+      {showEndDialog && (
+        <EndMeetingDialog
+          onConfirm={handleConfirmEndMeeting}
+          onCancel={() => { if (!isEndingMeeting) setShowEndDialog(false) }}
+          isLoading={isEndingMeeting}
+        />
+      )}
+
       {/* Top Bar */}
       <div className="h-14 border-b border-[#1A1A1A] bg-[#111] flex items-center justify-between px-6 flex-shrink-0">
         <div>
@@ -144,11 +244,20 @@ function RoomUI({
             <span className="text-sm font-medium text-white">{totalPeople}</span>
           </div>
           {isHost && (
-            <button onClick={endMeeting} className="bg-red-900/50 text-red-400 hover:bg-red-900/80 px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">
+            <button
+              onClick={() => setShowEndDialog(true)}
+              disabled={isEndingMeeting}
+              className="bg-red-900/50 text-red-400 hover:bg-red-900/80 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+            >
+              {isEndingMeeting && <Loader2 size={12} className="animate-spin" />}
               End Meeting
             </button>
           )}
-          <button onClick={() => { leaveRoom(); router.push('/meeting-ledger') }} className="bg-[#1A1A1A] hover:bg-[#2E2E2E] text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors">
+          <button
+            onClick={handleLeaveRoom}
+            disabled={isLeavingMeeting}
+            className="bg-[#1A1A1A] hover:bg-[#2E2E2E] disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-medium transition-colors"
+          >
             Leave
           </button>
         </div>
@@ -265,8 +374,17 @@ function RoomUI({
           <MonitorUp size={20} />
         </button>
         <div className="w-px h-8 bg-[#2E2E2E] mx-2" />
-        <button onClick={() => { leaveRoom(); router.push('/meeting-ledger') }} className="w-14 h-10 rounded-xl bg-red-600 hover:bg-red-700 text-white flex items-center justify-center transition-colors">
-          <PhoneOff size={20} />
+        {/* End Call (red phone) button — leaves the meeting */}
+        <button
+          onClick={handleLeaveRoom}
+          disabled={isLeavingMeeting}
+          className="w-14 h-10 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+          title="Leave meeting"
+        >
+          {isLeavingMeeting
+            ? <Loader2 size={20} className="animate-spin" />
+            : <PhoneOff size={20} />
+          }
         </button>
       </div>
     </div>
