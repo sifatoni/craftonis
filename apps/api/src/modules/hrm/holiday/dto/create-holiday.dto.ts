@@ -3,10 +3,10 @@ import { HolidayType } from '@prisma/client';
 
 export class CreateHolidayDto {
   @IsString()
-  name: string;
+  name!: string;
 
   @IsDateString()
-  date: string;
+  date!: string;
 
   @IsOptional()
   @IsEnum(HolidayType)
