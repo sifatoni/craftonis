@@ -478,6 +478,10 @@ model AttendanceLog {
   hoursWorked   Float?
   status        AttendanceStatus @default(PRESENT)
   notes         String?
+  lat           Float?
+  lon           Float?
+  locationName  String?
+  timezone      String?
   createdAt     DateTime         @default(now())
 
   employee      Employee         @relation(fields: [employeeId], references: [id])
@@ -495,6 +499,24 @@ enum AttendanceStatus {
   LEAVE 
   HOLIDAY 
   ON_LEAVE
+}
+
+// ── HOLIDAYS ───────────────────────────────────────────────
+model Holiday {
+  id        String      @id @default(cuid())
+  tenantId  String
+  name      String
+  date      DateTime
+  type      HolidayType @default(PUBLIC)
+  createdAt DateTime    @default(now())
+
+  @@index([tenantId])
+  @@map("holidays")
+}
+
+enum HolidayType {
+  PUBLIC
+  COMPANY
 }
 
 // ── LEAVE REQUESTS ─────────────────────────────────────────

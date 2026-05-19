@@ -62,6 +62,10 @@ export class AttendanceService {
           checkinTime: now,
           status,
           notes: dto?.notes,
+          lat: dto?.lat ?? null,
+          lon: dto?.lon ?? null,
+          locationName: dto?.locationName ?? null,
+          timezone: dto?.timezone ?? null,
         },
       });
     } catch (error) {

@@ -23,6 +23,15 @@ const LEAVE_TYPES = [
   { value: 'UNPAID',    label: 'Unpaid Leave' },
 ]
 
+const REASON_OPTIONS = [
+  'Sick / Medical',
+  'Family Emergency',
+  'Personal Work',
+  'Medical Appointment',
+  'Vacation / Travel',
+  'Other (specify)',
+]
+
 function calcBusinessDays(start: string, end: string): number {
   if (!start || !end) return 0
   const s = new Date(start)
@@ -46,7 +55,8 @@ export const RequestLeaveModal = memo(function RequestLeaveModal({
   const [leaveType, setLeaveType] = useState('ANNUAL')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [reason, setReason] = useState('')
+  const [reasonOption, setReasonOption] = useState(REASON_OPTIONS[0])
+  const [reasonDetails, setReasonDetails] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -54,11 +64,20 @@ export const RequestLeaveModal = memo(function RequestLeaveModal({
     setLeaveType('ANNUAL')
     setStartDate('')
     setEndDate('')
-    setReason('')
+    setReasonOption(REASON_OPTIONS[0])
+    setReasonDetails('')
   }, [open])
 
   const businessDays = calcBusinessDays(startDate, endDate)
   const hasValidRange = startDate !== '' && endDate !== ''
+
+  const buildReason = () => {
+    const details = reasonDetails.trim()
+    if (reasonOption === 'Other (specify)') {
+      return details || reasonOption
+    }
+    return details ? `${reasonOption}: ${details}` : reasonOption
+  }
 
   const handleSubmit = useCallback(async () => {
     if (!startDate || !endDate) {
@@ -75,7 +94,7 @@ export const RequestLeaveModal = memo(function RequestLeaveModal({
         leaveType,
         startDate,
         endDate,
-        reason: reason.trim() || undefined,
+        reason: buildReason(),
       })
       toast.success('Leave request submitted')
       qc.invalidateQueries({ queryKey: ['hrm-leave'] })
@@ -86,14 +105,15 @@ export const RequestLeaveModal = memo(function RequestLeaveModal({
     } finally {
       setSubmitting(false)
     }
-  }, [leaveType, startDate, endDate, reason, businessDays, qc, onClose])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaveType, startDate, endDate, reasonOption, reasonDetails, businessDays, qc, onClose])
 
   const INPUT = {
     background: '#0A0A0A',
     border: '1px solid #2E2E2E',
     color: '#FFFFFF',
     outline: 'none',
-  }
+  } as const
   const LABEL = { color: '#A0A0A0', fontSize: '0.75rem', fontWeight: 600 as const }
 
   return (
@@ -135,7 +155,6 @@ export const RequestLeaveModal = memo(function RequestLeaveModal({
                 value={startDate}
                 onChange={(e) => {
                   setStartDate(e.target.value)
-                  // Auto-correct end date if it's before new start
                   if (endDate && e.target.value > endDate) setEndDate(e.target.value)
                 }}
                 className="w-full h-10 rounded-lg px-3 text-sm"
@@ -179,13 +198,34 @@ export const RequestLeaveModal = memo(function RequestLeaveModal({
             </div>
           )}
 
-          {/* Reason */}
+          {/* Reason — dropdown */}
           <div className="space-y-1.5">
-            <Label style={LABEL}>REASON (OPTIONAL)</Label>
+            <Label style={LABEL}>REASON</Label>
+            <select
+              value={reasonOption}
+              onChange={(e) => setReasonOption(e.target.value)}
+              className="appearance-none w-full h-10 rounded-lg px-3 text-sm"
+              style={INPUT}
+            >
+              {REASON_OPTIONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Additional details — always shown */}
+          <div className="space-y-1.5">
+            <Label style={LABEL}>
+              {reasonOption === 'Other (specify)' ? 'SPECIFY REASON' : 'ADDITIONAL DETAILS (OPTIONAL)'}
+            </Label>
             <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Briefly describe the reason for your leave..."
+              value={reasonDetails}
+              onChange={(e) => setReasonDetails(e.target.value)}
+              placeholder={
+                reasonOption === 'Other (specify)'
+                  ? 'Please describe your reason...'
+                  : 'Any additional details...'
+              }
               rows={3}
               className="w-full rounded-lg px-3 py-2 text-sm resize-none"
               style={INPUT}
