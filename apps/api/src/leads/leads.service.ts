@@ -107,8 +107,8 @@ export class LeadsService {
     const where: any = { 
       tenantId,
       OR: [
-        { email: { not: null, not: '' } },
-        { phone: { not: null, not: '' } }
+        { email: { not: null, notIn: [''] } },
+        { phone: { not: null, notIn: [''] } }
       ]
     };
     if (filters.valueBand) where.valueBand = filters.valueBand;

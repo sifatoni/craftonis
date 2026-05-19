@@ -75,17 +75,22 @@ enum UserStatus {
 
 // ── DEPARTMENTS ────────────────────────────────────────────
 model Department {
-  id        String   @id @default(uuid())
-  tenantId  String
-  name      String
-  createdAt DateTime @default(now())
+  id          String     @id @default(cuid())
+  tenantId    String
+  name        String
+  managerId   String?
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
 
+  employees Employee[]
+  
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
   jobs      Job[]
-  employees Employee[]
   meetings  Meeting[]
 
   @@unique([tenantId, name])
+  @@index([tenantId])
   @@map("departments")
 }
 
@@ -414,26 +419,50 @@ model TokenLedger {
 
 // ── EMPLOYEES (HRM) ────────────────────────────────────────
 model Employee {
-  id           String    @id @default(uuid())
-  tenantId     String
-  userId       String    @unique
-  departmentId String?
-  salary       Float?
-  joinedAt     DateTime?
-  status       EmployeeStatus @default(ACTIVE)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                 String         @id @default(cuid())
+  tenantId           String
+  userId             String?        @unique
+  firstName          String
+  lastName           String
+  email              String?
+  phone              String?
+  gender             Gender?
+  dateOfBirth        DateTime?
+  nationalId         String?
+  address            String?
+  departmentId       String?
+  employmentType     EmploymentType @default(FULL_TIME)
+  designation        String?
+  jobRole            String?
+  reportingToId      String?
+  joinDate           DateTime?
+  status             EmployeeStatus @default(ACTIVE)
+  basicSalary        Float?
+  houseAllowance     Float?
+  transportAllowance Float?
+  medicalAllowance   Float?
+  otherAllowance     Float?
+  emergencyContact   String?
+  emergencyPhone     String?
+  emergencyRelation  String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
-  department   Department? @relation(fields: [departmentId], references: [id])
+  department  Department? @relation(fields: [departmentId], references: [id])
+  reportingTo Employee?   @relation("ReportsTo", fields: [reportingToId], references: [id])
+  reportees   Employee[]  @relation("ReportsTo")
+
   attendance   Attendance[]
   leaveRequests LeaveRequest[]
   payrolls     Payroll[]
 
+  @@index([tenantId])
   @@map("employees")
 }
 
 enum EmployeeStatus {
   ACTIVE
+  INACTIVE
   ON_LEAVE
   TERMINATED
 }
@@ -555,4 +584,18 @@ model Question {
   tenant    Tenant        @relation(fields: [tenantId], references: [id])
 
   @@map("questions")
+}
+
+// ── NEW ENUMS ──────────────────────────────────────────────
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
 }

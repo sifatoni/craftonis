@@ -15,6 +15,7 @@ import { QuestionsModule } from './modules/questions/questions.module';
 import { MeetingsModule } from './meetings/meetings.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { LeadsModule } from './leads/leads.module';
+import { HrmModule } from './modules/hrm/hrm.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { LeadsModule } from './leads/leads.module';
     MeetingsModule,
     OnboardingModule,
     LeadsModule,
+    HrmModule,
   ],
   controllers: [AppController],
   providers: [AppService],
